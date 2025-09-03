@@ -82,3 +82,6 @@ vite.config.ts.timestamp-*
 
 # MacOS
 .DS_Store
+
+# MCP Configuration
+.mcp.json
