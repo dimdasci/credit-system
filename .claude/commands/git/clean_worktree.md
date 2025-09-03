@@ -1,0 +1,1 @@
+Delete all the worktrees and corresponding branches from the .trees folder
