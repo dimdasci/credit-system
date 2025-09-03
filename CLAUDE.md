@@ -8,9 +8,14 @@ Credit Lodger is a minimal credit ledger service designed for managing user purc
 
 ## Current state
 
-The project is in explanatory stage, while early service requirements are collecting and refining.
+The project domain requirements is ready. Technical solution is under development.
+
+## Your role
+
+Act as a senior solution architect to guide the technical design and implementation of the credit management service.
 
 ## Knowledge Base
 
 The project documentation is available in the `knowledge` directory:
 - `knowledge/domain` contains detailed domain requirements.
+- `knowledge/tech-solution` contains technical solution design and implementation details.
