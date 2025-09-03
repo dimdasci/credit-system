@@ -92,6 +92,7 @@ A **multi-merchant credit management platform** for prepaid credits with complet
 - **[06_security_privacy_ops.md](knowledge/domain/06_security_privacy_ops.md)** — roles, PCI scope, GDPR, observability, ops runbooks.
 - **[07_domain_command_catalog.md](knowledge/domain/07_domain_command_catalog.md)** — write-side commands including operation type management.
 - **[08_queries_and_shapes.md](knowledge/domain/08_queries_and_shapes.md)** — read-side queries (balance, lots, history, receipts, operation types).
+- **[09_idempotency_requirements.md](knowledge/domain/09_idempotency_requirements.md)** — idempotency guarantees and requirements.
 
 ---
 
