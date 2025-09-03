@@ -1,7 +1,22 @@
 {
   "permissions": {
-    "allow": [],
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:effect-ts.github.io)",
+      "WebFetch(domain:effect.website)",
+      "WebFetch(domain:typescriptlang.org)",
+      "WebFetch(domain:nodejs.org)",
+      "WebFetch(domain:npmjs.com)",
+      "WebFetch(domain:vitejs.dev)",
+      "WebFetch(domain:biomejs.dev)",
+      "WebFetch(domain:supabase.com)",
+      "WebFetch(domain:railway.app)",
+      "WebFetch(domain:react.dev)",
+      "WebSearch",
+      "mcp__github__get_file_contents"
+    ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enabledMcpjsonServers": ["github"]
 }
