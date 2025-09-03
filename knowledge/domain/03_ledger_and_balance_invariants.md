@@ -94,8 +94,9 @@ All credit consumption creates ledger debit entries that reduce balance:
 - Every command/event must carry an **idempotency key**.
 - Ledger is immutable; corrections are compensating entries only.
 - All ledger entries must include complete operation context (lot_id, operation_type, resource_amount, resource_unit, workflow_id) regardless of reason.
+- **Duplicate Detection Window**: Idempotency tracking operates within a 7-day operational window, distinct from permanent ledger retention.
 
-**Invariant I1:** Replaying any accepted event (purchase, grant, adjustment, refund, chargeback, operation) yields **no additional** ledger entries.
+**Invariant I1:** Replaying any accepted event (purchase, grant, adjustment, refund, chargeback, operation) yields **no additional** ledger entries within the 7-day idempotency window.
 
 ---
 

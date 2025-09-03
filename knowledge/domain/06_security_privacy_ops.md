@@ -53,9 +53,10 @@
 ## Ops & Runbooks
 - **Expiry Job:** Nightly per merchant.
 - **Partition Job:** Monthly, per merchant ledger.
-- **Webhook Replay:** Upstream can resend settlement events with same idempotency key.
+- **Idempotency Cleanup:** Daily cleanup of idempotency tracking data older than 7 days per merchant.
+- **Webhook Replay:** Upstream can resend settlement events with same idempotency key within 7-day window.
 - **Receipt Re‑send:** Merchant support can trigger re‑email; same receipt number.
-- **Disaster Recovery:** Regular backups; receipts/ledger reproducible from snapshots per merchant.
+- **Disaster Recovery:** Regular backups; receipts/ledger reproducible from snapshots per merchant. Idempotency tracking recreated from recent operations only.
 
 ---
 

@@ -35,38 +35,37 @@ Each merchant has its own configuration stored within their isolated Supabase pr
 
 ---
 
-## Receipt Issuance Rules
+## Receipt Record Creation Rules
 1. **Trigger:** During `Purchase.Settled` event processing, after successful credit entry creation.
-2. **Uniqueness:** Exactly one receipt per `purchase` ledger entry.
+2. **Uniqueness:** Exactly one receipt record per `purchase` ledger entry.
 3. **Numbering:** `Prefix-YYYY-####`. Prefix = `receipt_series_prefix` from merchant config.
-4. **Re‑issue:** Allowed with same number; note “Re‑issued on <date>”.
-5. **Corrections:** No retroactive edits. Chargebacks logged separately.
+4. **PDF Generation:** out of scope of the system. Upstream applications is responsible for rendering PDF using receipt record data.
+5. **Corrections:** No retroactive edits to receipt records. Chargebacks logged separately.
 
 ---
 
-## Required Receipt Fields (Per Merchant)
-**Header**
-- Merchant legal name, registered address, country.
-- Tax status line from config.
-- Merchant contact email/URL.
+## Receipt Record Data Structure
+Receipt records contain all data required for consistent PDF generation:
 
-**Buyer**
-- User email (from Supabase Auth).
+**Merchant Context** (snapshot at purchase time)
+- Merchant legal name, registered address, country
+- Tax status line from config
+- Merchant contact email/URL
+- Receipt series prefix and numbering
 
-**Transaction**
-- Receipt number.
-- Issue date/time (ISO‑8601 UTC).
-- External payment reference (provider txn id, truncated for display).
-- Product code & title.
-- Amount & currency.
-- Tax breakdown (when applicable): `{ type, rate?, amount?, note? }` derived from merchant tax regime.
-- Country of purchase (from snapshot).
-- Credits issued & lot access period.
-- Lot reference (lot_id for audit trail).
+**Buyer Information**
+- User email (from Supabase Auth)
 
-**Footer**
-- Refund policy summary: "All purchases final – non‑refundable. Emergency refunds at merchant discretion."
-- Privacy line (link to merchant policy).
+**Transaction Data**
+- Receipt number (generated using merchant prefix)
+- Issue date/time (ISO‑8601 UTC)
+- External payment reference (provider txn id)
+- Product code & title (from product template)
+- Amount & currency (from pricing snapshot)
+- Tax breakdown: `{ type, rate?, amount?, note? }` (from merchant tax regime at purchase time)
+- Country of purchase (from upstream service on a moment of purchase)
+- Credits issued & lot access period
+- Lot reference (lot_id for audit trail)
 
 ---
 
@@ -78,32 +77,27 @@ Each merchant has its own configuration stored within their isolated Supabase pr
 
 ---
 
-## Language & Localization
-- Default language: English.
-- Currency formatting per pricing snapshot.
-- Times in UTC with offset.
-
----
-
-## Delivery & Access
-- Credit service generates PDF receipt during Purchase.Settled transaction.
-- Upstream application handles receipt delivery to users (email, download, etc.).
+## PDF Generation & Delivery
+- Credit service creates receipt record during Purchase.Settled transaction.
+- Credit service returns receipt data to upstream application.
+- Upstream applications generate PDF on-demand using receipt record data and handle delivery (email, download, etc.).
 
 ---
 
 ## Retention & Privacy
-- Retain receipts ≥ `retention_years` as set in merchant config.
-- Receipts retain merchant identity and minimal buyer identity.
-- No cardholder data stored.
+- Retain receipt records ≥ `retention_years` as set in merchant config.
+- Receipt records retain merchant identity and minimal buyer identity.
+- No cardholder data stored in receipt records.
+- PDF storage and retention handled by upstream applications per their policies.
 
 ---
 
 ## Cross‑Spec Invariants
-- With **Purchases & Payments:** One receipt per settled purchase, scoped by merchant. Receipt PDF generation is part of atomic Purchase.Settled transaction; delivery handled by upstream application.
-- With **Ledger:** Every `purchase` ledger entry generates exactly one receipt. Chargebacks/adjustments logged separately; receipts immutable. Receipt includes lot_id for audit trail connection.
-- With **Product & Pricing:** Receipts display product information and pricing snapshot data (amount, currency, country) from purchase settlement.
-- With **Merchant Config:** Receipt format, numbering, and tax display use merchant-specific configuration. Tax handling supports turnover regime (Armenia) with EU VAT extension capability.
-- With **Queries:** `ListReceipts` returns purchase receipts for the given merchant; numbering sequence scoped per merchant.
+- With **Purchases & Payments:** One receipt record per settled purchase, scoped by merchant. Receipt record creation is part of atomic Purchase.Settled transaction; PDF generation and delivery handled by upstream application.
+- With **Ledger:** Every `purchase` ledger entry generates exactly one receipt record. Chargebacks/adjustments logged separately; receipt records immutable. Receipt record includes lot_id for audit trail connection.
+- With **Product & Pricing:** Receipt records contain product information and pricing snapshot data (amount, currency, country) from purchase settlement for consistent PDF generation.
+- With **Merchant Config:** Receipt record includes merchant configuration snapshot at purchase time. Tax handling supports turnover regime (Armenia) with EU VAT extension capability.
+- With **Queries:** `ListReceipts` returns receipt records for the given merchant; numbering sequence scoped per merchant. Upstream applications use receipt data for PDF generation.
 
 ---
 

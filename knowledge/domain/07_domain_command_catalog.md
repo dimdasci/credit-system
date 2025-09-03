@@ -28,10 +28,11 @@
   - amount: +credits (from product template)
   - payment operation context: operation_type derived from payment method, resource_amount from pricing_snapshot, resource_unit from currency, workflow_id: generated for purchase
   - expiry: entry timestamp + product's access_period_days
-- Generate a receipt using the snapshot within merchant context.
+- Create receipt record with complete transaction data and merchant config snapshot for PDF generation.
+- Return receipt data to upstream application for PDF rendering and delivery.
 
 **Idempotency:**
-- Same external_ref produces no additional credit entries.
+- Same external_ref produces no additional credit entries within 7-day operational window.
 
 **Failure modes:**
 - Product archived or not for sale in snapshot country.
@@ -60,7 +61,7 @@
 - Create entry in open_operations table with operation_id and captured rate information
 - Return operation_id for use in subsequent Operation.RecordAndClose
 
-**Idempotency:** Same idempotency_key returns existing operation_id if still open.
+**Idempotency:** Same idempotency_key returns existing operation_id if still open, within 7-day operational window.
 
 **Failure modes:**
 - User has active operation: Return detailed error with operation_type, started_at, time_remaining
@@ -97,7 +98,7 @@
 - Remove entry from open_operations table (close operation)
 - Individual lot balance may go negative; total balance updated
 
-**Idempotency:** One debit per unique operation (by idempotency_key). If operation already closed, return success with existing ledger entry.
+**Idempotency:** One debit per unique operation (by idempotency_key) within 7-day operational window. If operation already closed, return success with existing ledger entry.
 
 **Failure modes:**
 - Operation_id not found or doesn't belong to user
@@ -111,7 +112,7 @@
 ### 4) `Grant.Apply` (Welcome)
 **Purpose:** Issue one-time welcome grant lot on user signup.
 
-**Inputs:** `merchant_id`, `user_id`
+**Inputs:** `merchant_id`, `user_id`, `idempotency_key`
 
 **Preconditions:** 
 - Welcome grant not yet issued for user_id within merchant context
@@ -123,7 +124,7 @@
   - grant operation context: operation_type: "welcome_grant", resource_amount: credits, resource_unit: "CREDIT", workflow_id: generated for grant
   - expiry: entry timestamp + product's access_period_days
 
-**Idempotency:** One welcome grant per user_id within merchant context.
+**Idempotency:** Same idempotency_key produces no additional grants within 7-day operational window.
 
 **Failure modes:** 
 - Welcome grant already issued; 
@@ -146,7 +147,7 @@
   - grant operation context: operation_type: "promo_grant", resource_amount: credits, resource_unit: "CREDIT", workflow_id: generated for grant, note: admin_actor context
   - expiry: entry timestamp + access_period_days from input
 
-**Idempotency:** Same idempotency_key produces no additional grants.
+**Idempotency:** Same idempotency_key produces no additional grants within 7-day operational window.
 
 **Failure modes:** 
 - Unauthorized caller; 
@@ -176,7 +177,7 @@
   - adjustment operation context: operation_type: "credit_adjustment", resource_amount: credit_amount, resource_unit: "CREDIT", workflow_id: generated for adjustment, note: justification
   - expiry: entry timestamp + access_period_days from input
 
-**Idempotency:** Same idempotency_key produces no additional credit adjustments.
+**Idempotency:** Same idempotency_key produces no additional credit adjustments within 7-day operational window.
 
 **Failure modes:** 
 - Unauthorized caller; 
@@ -201,7 +202,7 @@
 - Find oldest non-expired lot for FIFO consumption and target that lot_id
 - Balance updated; may go negative (overdraft allowed)
 
-**Idempotency:** Same idempotency_key produces no additional debit adjustments.
+**Idempotency:** Same idempotency_key produces no additional debit adjustments within 7-day operational window.
 
 **Failure modes:** 
 - Unauthorized caller; 
@@ -262,7 +263,7 @@
 
 **Effects:** Ledger negative entry (`reason = refund`) equal to full original purchase amount with refund operation context (operation_type: "refund", resource_amount: original_amount, resource_unit: original_currency, workflow_id: generated for refund, note: justification).
 
-**Idempotency:** Same external_ref produces no additional refunds.
+**Idempotency:** Same external_ref produces no additional refunds within 7-day operational window.
 
 **Failure modes:** 
 - Missing linkage; 
@@ -280,7 +281,7 @@
 
 **Effects:** Ledger negative entry (`reason = chargeback`) equal to full original purchase amount with chargeback operation context (operation_type: "chargeback", resource_amount: original_amount, resource_unit: original_currency, workflow_id: generated for chargeback).
 
-**Idempotency:** Same external_ref produces no additional chargebacks.
+**Idempotency:** Same external_ref produces no additional chargebacks within 7-day operational window.
 
 **Failure modes:** 
 - Missing linkage; 
@@ -343,7 +344,7 @@
 - Log cleanup event for audit trail
 - Operation becomes unavailable for Operation.RecordAndClose
 
-**Idempotency:** By operation_id + cleanup_reason combination.
+**Idempotency:** By operation_id + cleanup_reason combination within 7-day operational window.
 
 **Failure modes:**
 - Operation_id not found or already closed
@@ -369,7 +370,7 @@
 - Create ledger entry (`reason = expiry`) with expiry operation context:
   - operation_type: "lot_expiry", resource_amount: remaining_credits, resource_unit: "CREDIT", workflow_id: generated system workflow
 
-**Idempotency:** By lot_id + expired_at combination.
+**Idempotency:** By lot_id + expired_at combination within 7-day operational window.
 
 **Failure modes:** 
 - Lot already processed for expiry

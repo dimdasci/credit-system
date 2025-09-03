@@ -38,7 +38,7 @@ See [Domain Overview](knowledge/domain/00_domain_overview.md#roles--responsibili
 
 ## Failure & Edge‑Case Handling
 - **Abandoned/failed payments**: outside the ledger; no events sent.
-- **Duplicate/late events**: idempotency key and external reference prevent double issuance.
+- **Duplicate/late events**: idempotency key and external reference prevent double issuance within 7-day operational window.
 - **Partial captures**: are not allowed, units must match.
 - **Over/under‑charge corrections**: are not allowed, units must match
 - **Service SLA failure**: use `Adjustment.Apply` with justification through control panel.
@@ -62,4 +62,4 @@ See [Domain Overview](knowledge/domain/00_domain_overview.md#roles--responsibili
 1. No credits exist without a settled purchase or a grant (starter/promo/adjustment).
 2. Every `purchase` ledger entry has a matching receipt.
 3. Chargebacks and adjustments are recorded as compensating entries; no destructive edits to past ledger lines.
-4. The ledger is append‑only and idempotent: replaying the same event cannot change state twice.
+4. The ledger is append‑only and idempotent: replaying the same event cannot change state twice within 7-day operational window.
