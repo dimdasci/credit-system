@@ -3,7 +3,7 @@
 ---
 
 ## Security Boundaries
-- **Auth Provider:** Supabase Auth per merchant. Each merchant operates with complete data isolation via separate Supabase projects.
+- **Auth Provider:** Supabase Auth per merchant. Each merchant operates with complete data isolation via separate Supabase projects. Deployment model: 1:1 application↔merchant; configuration is operational application config in this mode, while receipts snapshot all merchant fields.
 - **Merchant Context:** Every command/query operates within merchant context determined by project routing. Complete data isolation between merchants.
 - **Roles (per merchant):**
   - **User:** Can query own balance/history/receipts within their merchant context only.
@@ -71,4 +71,4 @@
 1. **Merchant_id assignment:** Manual configuration during merchant onboarding, separate from but mapped to Supabase project IDs.
 2. **Service discovery:** HTTP headers or routing middleware determine merchant context and corresponding Supabase project connection.
 3. **Log retention:** Should align with merchant-configured receipt retention for audit consistency.
-
+4. **Deployment note:** In 1:1 app↔merchant deployments, operational configuration resides with the application; if moving to multi‑tenant, store merchant configuration per merchant database to preserve isolation and updatability.
