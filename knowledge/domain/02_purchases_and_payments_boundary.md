@@ -5,7 +5,7 @@ Define how the **Credit Management Service** handles purchases and payments with
 
 ---
 
-**Merchant Context:** All operations are scoped by `merchant_id`. Each merchant operates with complete data isolation via separate Supabase projects.
+**Merchant Context:** All operations are scoped by `merchant_id`. Each merchant operates with complete data isolation via separate Supabase projects. Architecture: 1:1 application↔merchant — a single upstream application per merchant integrates with providers and posts domain commands.
 
 ## Actor Responsibilities
 See [Domain Overview](knowledge/domain/00_domain_overview.md#roles--responsibilities) for detailed actor definitions and responsibilities.
@@ -22,6 +22,7 @@ See [Domain Overview](knowledge/domain/00_domain_overview.md#roles--responsibili
   - User identifier (Supabase Auth id).
   - Product code.
   - **Pricing snapshot**: country of purchase, currency, amount (tax‑inclusive), optional VAT rate/note.
+  - Order placed timestamp (`order_placed_at`) captured at checkout used for price validation.
   - External payment reference (provider txn id).
   - Settlement timestamp.
   - Idempotency key.
@@ -63,3 +64,4 @@ See [Domain Overview](knowledge/domain/00_domain_overview.md#roles--responsibili
 2. Every `purchase` ledger entry has a matching receipt.
 3. Chargebacks and adjustments are recorded as compensating entries; no destructive edits to past ledger lines.
 4. The ledger is append‑only and idempotent: replaying the same event cannot change state twice within 7-day operational window.
+5. Pricing snapshot validation uses `order_placed_at`: the product and price must be active/available at `order_placed_at`; settlement may proceed even if the product is archived at settlement time, provided the order was placed while the product was active.
