@@ -8,7 +8,7 @@ Credit Lodger is a minimal credit ledger service designed for managing user purc
 
 ## Current state
 
-The project domain requirements is ready. Technical solution is under development.
+The project domain requirements is ready. Technical solution is under development. You task is to complete technical solution design and implementation following @knowledge/tech-solution/implementation-outline.md.
 
 ## Your role
 
