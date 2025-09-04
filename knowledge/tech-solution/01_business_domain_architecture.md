@@ -882,6 +882,7 @@ erDiagram
     Product ||--o{ LedgerEntry : "issuance entries from template"
     Product ||--o{ PriceRow : "has price rows (sellable)"
     Operation ||--o{ LedgerEntry : "creates debit entries"
+    LedgerEntry ||--o| Receipt : "generated for purchases only"
 ```
 
 **Core Design Principles:**
@@ -898,8 +899,8 @@ erDiagram
 ```mermaid
 flowchart TD
     A[Payment Validated] --> B[Product Lookup]
-    B --> C{Product Found & Available?}
-    C -->|Yes| D[Create Initial Credit LedgerEntry (Lot)]
+    B --> C{Product Found and Available?}
+    C -->|Yes| D[Create Initial Credit Entry]
     C -->|No| E[Return ProductNotFound Error]
     
     D --> F[Generate Receipt]
