@@ -13,14 +13,15 @@
   - `country` (ISO‑3166‑1 alpha‑2 or "*" for fallback)
   - `price`: `{ amount, currency }`
   - `tax?`: `{ type, rate?, amount?, note? }` (derived from merchant config)
+- `order_placed_at` (checkout/order creation timestamp used for price validation)
 - `external_ref` (provider transaction id)
 - `settled_at`
 - `idempotency_key`
 
 **Preconditions:**
-- `product_code` is currently **active** within merchant catalog.
-- `pricing_snapshot.country` is **available** for the product at checkout time.
-- Amount/currency match merchant presentation.
+- `product_code` is **active at order_placed_at** within merchant catalog.
+- `pricing_snapshot.country` is **available** for the product at `order_placed_at`.
+- Amount/currency match the resolved price at `order_placed_at`.
 - Merchant context valid for user.
 
 **Effects:**
@@ -382,4 +383,3 @@
 - **Atomic effect:** Each accepted command produces consistent state changes and necessary ledger entries.
 - **Idempotency:** Callers supply an idempotency key; the ledger guarantees at‑least‑once safety without duplication.
 - **Auditability:** Commands capture actor context (app/admin), timestamps, and notes for forensics.
-
