@@ -719,6 +719,8 @@ const operationOpenHandler = (request: OperationOpen) =>
   })
 
 // RPC Router Configuration
+// NOTE: System jobs (Operation.Cleanup, Lot.Expire) are NOT included here
+// as they run via pg_cron background jobs, not RPC endpoints
 const creditServiceRouter = Router.make(
   Rpc.effect(PurchaseSettled, purchaseSettledHandler),
   Rpc.effect(OperationOpen, operationOpenHandler),
@@ -731,6 +733,8 @@ const creditServiceRouter = Router.make(
   Rpc.effect(GetLedgerHistory, getLedgerHistoryHandler),
   Rpc.effect(GetReceiptById, getReceiptByIdHandler),
   Rpc.effect(ListReceipts, listReceiptsHandler)
+  // TODO: Add admin command schemas during implementation:
+  // - DebitAdjustment.Apply, Product.Create, Product.Archive, OperationType.CreateWithArchival
 )
 
 // HTTP Integration
