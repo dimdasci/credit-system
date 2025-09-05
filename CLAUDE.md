@@ -18,4 +18,4 @@ Act as a senior solution architect to guide the technical design and implementat
 
 The project documentation is available in the `knowledge` directory:
 - `knowledge/domain` contains detailed domain requirements.
-- `knowledge/tech-solution` contains technical solution design and implementation details.
+- `knowledge/tech-solution` contains technical solution design and implementation details, with subfolder for a narrow topic and intermediate research artifacts.
