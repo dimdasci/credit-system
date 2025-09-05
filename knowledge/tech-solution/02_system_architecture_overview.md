@@ -138,3 +138,34 @@ graph TD
 - Tenant context is set in middleware and provided via Effect layers to DB and services.
 - RPC contracts are schema‑first; server and client share the same definitions.
 - Keep DB schema and migrations per merchant; never cross tenant boundaries.
+
+## 2.7 API Versioning
+
+### Policy
+- Header: `X-API-Version` with date value (YYYY-MM-DD), e.g., `2025-01-15`.
+- Defaults: `DEFAULT_API_VERSION` used when header absent; `MIN_SUPPORTED_API_VERSION` rejects older requests.
+- Scope: Versioning applies only to the RPC edge (contracts + router). Shared domain/services remain unversioned.
+- Selection: Best match ≤ requested; otherwise return `UnsupportedApiVersion` with guidance.
+
+### Repository Layout (versioned from day one)
+- Start with versioned folders to avoid later renames:
+  - `packages/rpc/src/contracts/`
+    - `v2025_01_15/` (purchase.ts, operation.ts, grants.ts, admin.ts, queries.ts, receipts.ts, index.ts)
+    - `latest.ts` (re‑exports current version)
+  - `apps/server/src/rpc/routers/`
+    - `v2025_01_15.ts` (wire handlers to v2025_01_15 contracts)
+    - `registry.ts` (map `"2025-01-15" → v2025_01_15`)
+  - `apps/server/src/rpc/middleware/`
+    - `ApiVersionMiddleware.ts` (reads `X-API-Version`, validates, selects router)
+
+### Middleware & Router Selection (sketch)
+- `ApiVersionMiddleware` parses `X-API-Version` or uses default, ensures `>= MIN_SUPPORTED_API_VERSION`, provides `ApiVersionContext`.
+- `RouterRegistry` returns the router for the best supported version ≤ requested.
+- Handlers call shared services; only serialization/contracts differ per version.
+
+### Client Defaults
+- Client sets `X-API-Version` using configured `apiVersion` or defaults to server’s `DEFAULT_API_VERSION`.
+
+### Deprecation
+- Track `api_version` in logs/metrics.
+- Announce new versions with changelog and target deprecation date; reject after grace period via `MIN_SUPPORTED_API_VERSION`.
