@@ -6,7 +6,7 @@ Provide a high-level map of the multi-merchant credit management service domain.
 ---
 
 ## Architecture
-A **monolith credit management service** supporting multiple merchants with complete data isolation. The service handles the complete credit lifecycle: product catalog, pricing, ledger accounting, consumption tracking, receipts, and operational analytics. Each merchant operates independently with their own Supabase project, ensuring complete data and operational isolation.
+A **monolith credit management service** supporting multiple merchants with complete data isolation. The service handles the complete credit lifecycle: product catalog, pricing, ledger accounting, consumption tracking, receipts, and operational analytics. Each merchant operates independently with their own database, ensuring complete data and operational isolation.
 
 **Service Composition:**
 - **Product Catalog Module:** Product definitions, pricing, lifecycle management
@@ -18,14 +18,14 @@ A **monolith credit management service** supporting multiple merchants with comp
 ---
 
 ## Scope
-A **multi-merchant credit management platform** for prepaid credits with complete operational lifecycle support. Each merchant operates as an independent business entity with complete data isolation via separate Supabase projects. Each merchant defines its own products, prices, operation rates, grants, and legal configuration. 
+A **multi-merchant credit management platform** for prepaid credits with complete operational lifecycle support. Each merchant operates as an independent business entity with complete data isolation via separate databases. Each merchant defines its own products, prices, operation rates, grants, and legal configuration. 
 
 **Architecture**: 1:1 application-to-merchant relationship where each merchant operates through a single dedicated upstream application that interacts via provider-agnostic commands and queries.
 
 ---
 
 ## Core Domain Concepts
-- **Merchant:** Independent legal entity with its own Supabase project, catalog, operation rates, receipt config, tax regime, and complete data isolation.
+- **Merchant:** Independent legal entity with its own database, catalog, operation rates, receipt config, tax regime, and complete data isolation.
 - **Product:** Immutable lot template with `credits`, `access_period_days`, and pricing. Distribution = `sellable` or `grant`. Product-price combinations have `effective_at` and `archived_at` lifecycle.
 - **Operation Type:** Immutable resource-to-credit conversion specification with `operation_code`, `resource_unit`, `credits_per_unit`. Single active version per operation code with sequential lifecycle.
 - **Workflow:** User-facing unit of work that consumes credits through multiple atomic operations over time. Workflows may span multiple days/sessions.
@@ -105,12 +105,12 @@ A **multi-merchant credit management platform** for prepaid credits with complet
 - **Receipt generation** with merchant-specific tax and legal configuration
 - **Balance calculation** with overdraft support and FIFO consumption
 - **Workflow consumption tracking** with atomic operation debiting
-- **Merchant isolation** via separate Supabase projects
+- **Merchant isolation** via separate databases
 
 ### Out of Scope (Upstream Applications)
 - **Payment provider integration** (Ameriabank, PayPal, etc.)
 - **Workflow execution** and business logic
-- **User authentication and authorization** (handled by Supabase Auth per merchant)
+- **User authentication and authorization** (handled by upstream application’s auth provider)
 - **Workflow-level aggregation** for user interfaces
 - **Business intelligence and analytics** beyond operational reporting
 - **Customer support tooling** beyond basic account overview
@@ -121,5 +121,4 @@ A **multi-merchant credit management platform** for prepaid credits with complet
 - Use this overview to onboard new team members to the credit management service.
 - For implementation, always consult the detailed document matching your service module.
 - This service provides APIs for upstream applications; it does not include user-facing interfaces.
-
 
