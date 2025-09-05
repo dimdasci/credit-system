@@ -3,8 +3,8 @@
 ---
 
 ## Merchant Config
-Each merchant has its own configuration. In 1:1 application↔merchant deployments, configuration is maintained as operational application config (rarely changing). Receipt creation snapshots all merchant fields needed for documents, and receipt numbering uses a per‑merchant database sequence inside the same transaction as Purchase.Settled. In multi‑tenant deployments, configuration is stored within each merchant’s isolated Supabase project. Fields include:
-- `merchant_id` (stable identifier, maps to Supabase project)
+Each merchant has its own configuration. In 1:1 application↔merchant deployments, configuration is maintained as operational application config (rarely changing). Receipt creation snapshots all merchant fields needed for documents, and receipt numbering uses a per‑merchant database sequence inside the same transaction as Purchase.Settled. In multi‑tenant deployments, configuration is stored within each merchant’s isolated database. Fields include:
+- `merchant_id` (stable identifier, maps to merchant database)
 - `legal_name`
 - `registered_address`
 - `country`
@@ -54,7 +54,7 @@ Receipt records contain all data required for consistent PDF generation:
 - Receipt series prefix and numbering
 
 **Buyer Information**
-- User email (from Supabase Auth)
+- User email (from upstream application/auth provider)
 
 **Transaction Data**
 - Receipt number (generated using merchant prefix)

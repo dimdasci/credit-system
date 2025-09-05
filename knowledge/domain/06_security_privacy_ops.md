@@ -3,7 +3,7 @@
 ---
 
 ## Security Boundaries
-- **Auth Provider:** Supabase Auth per merchant. Each merchant operates with complete data isolation via separate Supabase projects. Deployment model: 1:1 application↔merchant; configuration is operational application config in this mode, while receipts snapshot all merchant fields.
+- **Auth Provider:** External authentication provider managed by the upstream application. Each merchant operates with complete data isolation via separate databases. Deployment model: 1:1 application↔merchant; configuration is operational application config in this mode, while receipts snapshot all merchant fields.
 - **Merchant Context:** Every command/query operates within merchant context determined by project routing. Complete data isolation between merchants.
 - **Roles (per merchant):**
   - **User:** Can query own balance/history/receipts within their merchant context only.
@@ -22,8 +22,8 @@
 ---
 
 ## Privacy (GDPR/Local Compliance)
-- **Data Isolation:** Complete separation per merchant via Supabase projects. No cross-merchant data sharing or access.
-- **Stored per Merchant:** `user_id` (Supabase Auth within merchant project), email (for receipts).
+- **Data Isolation:** Complete separation per merchant via isolated databases. No cross-merchant data sharing or access.
+- **Stored per Merchant:** `user_id` (external auth/user id from upstream application), email (for receipts).
 - **Data Minimization:** No billing addresses collected unless merchant explicitly enables invoicing (not at launch).
 - **Data Export:** User can export own ledger and receipts within their merchant context via upstream application.
 - **Deletion:** On account deletion, personal identifiers are erased within merchant project; ledger/receipts retained anonymized. `user_id` replaced with tombstone marker.
@@ -61,14 +61,14 @@
 ---
 
 ## Cross‑Spec Invariants
-- **With Receipts & Tax:** Each receipt scoped to merchant config within isolated Supabase project.
+- **With Receipts & Tax:** Each receipt scoped to merchant config within the isolated merchant database.
 - **With Ledger:** Ledger state completely isolated per merchant project.
 - **With Queries:** Users see only data within their merchant context; no cross-merchant access possible.
 
 ---
 
 ## Implementation Notes
-1. **Merchant_id assignment:** Manual configuration during merchant onboarding, separate from but mapped to Supabase project IDs.
-2. **Service discovery:** HTTP headers or routing middleware determine merchant context and corresponding Supabase project connection.
+1. **Merchant_id assignment:** Manual configuration during merchant onboarding, mapped to merchant database identifiers.
+2. **Service discovery:** HTTP headers or routing middleware determine merchant context and corresponding database connection.
 3. **Log retention:** Should align with merchant-configured receipt retention for audit consistency.
 4. **Deployment note:** In 1:1 app↔merchant deployments, operational configuration resides with the application; if moving to multi‑tenant, store merchant configuration per merchant database to preserve isolation and updatability.

@@ -5,7 +5,7 @@ Define how the **Credit Management Service** handles purchases and payments with
 
 ---
 
-**Merchant Context:** All operations are scoped by `merchant_id`. Each merchant operates with complete data isolation via separate Supabase projects. Architecture: 1:1 application↔merchant — a single upstream application per merchant integrates with providers and posts domain commands.
+**Merchant Context:** All operations are scoped by `merchant_id`. Each merchant operates with complete data isolation via separate databases. Architecture: 1:1 application↔merchant — a single upstream application per merchant integrates with providers and posts domain commands.
 
 ## Actor Responsibilities
 See [Domain Overview](knowledge/domain/00_domain_overview.md#roles--responsibilities) for detailed actor definitions and responsibilities.
@@ -14,12 +14,12 @@ See [Domain Overview](knowledge/domain/00_domain_overview.md#roles--responsibili
 
 ## Lifecycle of a Purchase
 
-**Merchant Isolation:** Each merchant has its own Supabase project. The `merchant_id` determines which Supabase project to connect to for data operations, ensuring complete data isolation.
+**Merchant Isolation:** Each merchant has its own database. The `merchant_id` determines which database to connect to for data operations, ensuring complete data isolation.
 
 ### 1. Payment Settlement (Only)
 - Upstream confirms success with provider.
 - Upstream submits a **Purchase.Settled** event with:
-  - User identifier (Supabase Auth id).
+  - User identifier (external auth/user id from upstream application).
   - Product code.
   - **Pricing snapshot**: country of purchase, currency, amount (tax‑inclusive), optional VAT rate/note.
   - Order placed timestamp (`order_placed_at`) captured at checkout used for price validation.

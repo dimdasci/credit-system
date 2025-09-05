@@ -7,7 +7,7 @@
 
 **Inputs:**
 - `merchant_id` (merchant context for data isolation)
-- `user_id` (Supabase Auth id within merchant project)
+- `user_id` (external auth/user id from upstream application)
 - `product_code` (active within merchant catalog)
 - `pricing_snapshot` — taken from `ListAvailableProducts(country)` at checkout time:
   - `country` (ISO‑3166‑1 alpha‑2 or "*" for fallback)
@@ -46,7 +46,7 @@
 
 **Inputs:**
 - `merchant_id` (merchant context for data isolation)
-- `user_id` (Supabase Auth id within merchant project)
+- `user_id` (external auth/user id from upstream application)
 - `operation_type_code` (active operation type within merchant catalog)
 - `workflow_id?` (optional workflow context for external aggregation)
 - `idempotency_key`
@@ -77,7 +77,7 @@
 
 **Inputs:**
 - `merchant_id` (merchant context for data isolation)
-- `user_id` (Supabase Auth id within merchant project)
+- `user_id` (external auth/user id from upstream application)
 - `operation_id` (from Operation.Open, required)
 - `workflow_id?` (optional workflow context, must match Operation.Open if both provided)
 - `resource_amount` (consumed resource quantity with high precision)
