@@ -67,12 +67,10 @@
 
 ## 5. Multi-tenant Environment Variables
 
-**Per-merchant Supabase credentials:**
+**Per-merchant database URLs:**
 ```bash
-MERCHANT_ACME_SUPABASE_URL=https://acme.supabase.co
-MERCHANT_ACME_SUPABASE_SERVICE_KEY=eyJ...
-MERCHANT_DEMO_SUPABASE_URL=https://demo.supabase.co  
-MERCHANT_DEMO_SUPABASE_SERVICE_KEY=eyJ...
+MERCHANT_ACME_DATABASE_URL=postgres://user:pass@host:5432/acme
+MERCHANT_DEMO_DATABASE_URL=postgres://user:pass@host:5432/demo
 ```
 
 **Set at Railway project level**, accessible by all services.

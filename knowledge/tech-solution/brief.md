@@ -11,7 +11,7 @@ Based on domain requirements analysis, the system architecture is clearly define
 - **Core Structure**: Single `ledger_entries` table with all credit movements
 - **Immutability**: Enforced at database level, corrections via compensating entries only
 - **Balance Calculation**: `SUM(amount)` from all ledger entries
-- **Multi-tenant Isolation**: Separate Supabase project per merchant (complete data isolation)
+- **Multi-tenant Isolation**: Separate database per merchant (complete data isolation)
 - **Audit Trail**: Every entry includes complete operation context (operation_type, resource_amount, resource_unit, workflow_id)
 
 The domain requirements explicitly describe an append-only ledger system, aligning with the "lean focused system" design philosophy that prioritizes simplicity over complexity.
@@ -22,8 +22,8 @@ The domain requirements explicitly describe an append-only ledger system, aligni
 - Target framework: Effect
 
 - Hosting platform: Railways. Upstream application backend is already deployed there.
-- Database: PostgreSQL within Supabase service
-- End-user Authentication: Supabase Auth
+- Database: PostgreSQL (provider agnostic)
+- End-user Authentication: External auth provider (via upstream application)
 - Telemetry, Logging: Sentry 
 
 ## Tactical Implementation Questions
@@ -92,7 +92,7 @@ Effect.provideService(
 **Authentication Flow:**
 1. Upstream app gets JWT with merchant_id claim
 2. Effect/rpc middleware validates token and extracts merchant context
-3. Automatic Supabase project routing based on merchant_id
+3. Automatic merchant database routing based on merchant_id
 4. All operations scoped to merchant boundary
 
 
@@ -130,7 +130,7 @@ The domain requirements specify different idempotency guarantees based on operat
 - Use PostgreSQL unique constraints for atomicity and race condition prevention
 - Implement result materialization only where business domain requires it
 - 7-day cleanup window applies to both priority levels
-- Merchant-scoped isolation through separate Supabase databases
+- Merchant-scoped isolation through separate databases
 
 **Idempotency Key Management**:
 - **Client Keys**: Collision-resistant UUIDv7/ULID from clients for natural time-ordering
@@ -228,7 +228,7 @@ WHERE status = 'open' AND expires_at < NOW();
 - **Clear Error Messaging**: Clients receive specific "operation expired" responses
 
 **Multi-Tenant Implementation**:
-- Background job runs per Supabase project (merchant isolation)
+- Background job runs per merchant database (merchant isolation)
 - Merchant-configurable timeout settings (default: 15 minutes)
 - Independent cleanup scheduling per merchant
 
@@ -241,24 +241,19 @@ WHERE status = 'open' AND expires_at < NOW();
 
 ### 5. Multi-tenant Database Connection Strategy ✅
 
-**Decision: JWT-Based Merchant Resolution with Individual Environment Variables**
+**Decision: JWT-Based Merchant Resolution with Per‑Merchant Database URLs**
 
 **Connection Flow**:
 1. JWT middleware extracts `merchant_id` from token claims
-2. Lookup Supabase project credentials using merchant_id  
+2. Lookup merchant database URL using `merchant_id`
 3. Establish database connection for request scope
 4. All operations use merchant-scoped connection
 
 **Credential Management** (Initial Scale: 1-2 merchants):
 ```bash
-# Environment variables per merchant
-MERCHANT_ACME_SUPABASE_URL=https://acme.supabase.co
-MERCHANT_ACME_SUPABASE_ANON_KEY=eyJ0eXAi...
-MERCHANT_ACME_SUPABASE_SERVICE_KEY=eyJ0eXAi...
-
-MERCHANT_DEMO_SUPABASE_URL=https://demo.supabase.co  
-MERCHANT_DEMO_SUPABASE_ANON_KEY=eyJ0eXAi...
-MERCHANT_DEMO_SUPABASE_SERVICE_KEY=eyJ0eXAi...
+# Environment variables per merchant (provider-agnostic Postgres)
+MERCHANT_ACME_DATABASE_URL=postgres://user:pass@host:5432/acme
+MERCHANT_DEMO_DATABASE_URL=postgres://user:pass@host:5432/demo
 ```
 
 **Connection Pool Strategy**:
@@ -271,17 +266,17 @@ MERCHANT_DEMO_SUPABASE_SERVICE_KEY=eyJ0eXAi...
 // JWT middleware extracts merchant_id
 const merchantId = jwt.claims.merchant_id;
 
-// Dynamic Supabase client resolution  
-const supabaseClient = getSupabaseClient(merchantId);
+// Resolve per-merchant Postgres connection
+const db = getDbPool(merchantId); // uses MERCHANT_{ID}_DATABASE_URL
 
-// All operations scoped to merchant database
-const result = await supabaseClient
-  .from('ledger_entries')
-  .insert(entry);
+// All operations use merchant-scoped connection
+await db.query('insert into ledger_entries(user_id, lot_id, amount, reason, operation_type) values ($1,$2,$3,$4,$5)', [
+  entry.user_id, entry.lot_id, entry.amount, entry.reason, entry.operation_type
+]);
 ```
 
 **Benefits**:
-- Leverages existing JWT authentication decision
+- Provider-agnostic: works with any managed Postgres
 - Simple credential management for initial scale
 - Complete data isolation guaranteed
 - Railway environment variable friendly
@@ -354,7 +349,7 @@ CREATE INDEX idx_balance_user ON user_balance (user_id);
 
 **Scaling Benefits**:
 - Multi-tenant isolation means each merchant's growth is independent
-- Supabase handles underlying infrastructure scaling per project
+- Managed Postgres handles underlying infrastructure scaling per database
 - Append-only design with monthly partitions scales to 100M+ rows per merchant
 - Balance cache eliminates expensive aggregation queries on large ledgers
 
@@ -384,7 +379,7 @@ CREATE INDEX idx_balance_user ON user_balance (user_id);
 **Authentication Flow**:
 - **Service-to-Service**: Upstream app uses permanent JWT in Authorization header
 - **CLI Authentication**: Same permanent JWT stored in environment variable (`CREDIT_SERVICE_JWT`)
-- **Merchant Context**: Extracted from `merchant_id` claim, used for Supabase project routing
+- **Merchant Context**: Extracted from `merchant_id` claim, used for merchant database routing
 
 **Security Boundaries**:
 - **Network Security**: Private Railway network prevents external access
@@ -419,8 +414,8 @@ CREATE INDEX idx_balance_user ON user_balance (user_id);
 // Process all merchants in single job run
 const merchants = await getAllMerchants();
 for (const merchantId of merchants) {
-  const client = getSupabaseClient(merchantId);
-  await cleanupExpiredOperations(client, merchantId);
+  const db = getDbPool(merchantId); // uses MERCHANT_{ID}_DATABASE_URL
+  await cleanupExpiredOperations(db, merchantId);
 }
 ```
 
@@ -431,7 +426,7 @@ for (const merchantId of merchants) {
 
 **Benefits**:
 - **Simple & Cheap**: Single Railway cron service for all background work
-- **Integrated**: Uses same codebase and Supabase connections as main service
+- **Integrated**: Uses same codebase and database connections as main service
 - **Reliable**: Railway handles cron scheduling and failure notifications
 
 ### 10. Deployment & DevOps ✅
@@ -440,25 +435,25 @@ for (const merchantId of merchants) {
 
 **Deployment Strategy**:
 - **Railway**: Handles all application hosting, scaling, and monitoring
-- **Supabase**: Provides database hosting, backups, and connection pooling per merchant
+- **Database**: Managed Postgres provides hosting, backups, and connection pooling per merchant
 - **Zero Custom DevOps**: Rely entirely on platform services for operational concerns
 
 **Infrastructure Components**:
 - **Main Service**: Railway service running Effect/RPC server
 - **Cron Service**: Railway cron service for background jobs  
-- **Databases**: Individual Supabase projects per merchant (complete isolation)
+- **Databases**: Individual databases per merchant (complete isolation)
 - **Monitoring**: Railway built-in metrics + Sentry for application errors
 
 **Configuration Management**:
 - **Environment Variables**: Railway environment variable management for all configuration
-- **Secrets**: Railway secrets for JWT signing keys and Supabase credentials
+- **Secrets**: Railway secrets for JWT signing keys and database credentials
 - **No Config Files**: All configuration through platform environment management
 
 **Operational Benefits**:
 - **Zero Server Management**: Railway handles all infrastructure concerns
-- **Automatic Scaling**: Both Railway and Supabase auto-scale based on usage
+- **Automatic Scaling**: Both Railway and managed Postgres auto-scale based on usage
 - **Built-in Monitoring**: Platform-native observability and alerting
-- **Disaster Recovery**: Supabase handles database backups and point-in-time recovery per merchant
+- **Disaster Recovery**: Managed Postgres provides database backups and point-in-time recovery per merchant
 
 **Cost Optimization**:
 - **Pay-per-use**: Both platforms scale to zero when unused
@@ -511,15 +506,15 @@ describe("Idempotency Behavior", () => {
 ```typescript
 describe("Connection & Auth", () => {
   it("handles invalid JWT signatures gracefully")
-  it("handles Supabase connection failures with retries")
-  it("validates merchant_id maps to existing Supabase project")
+  it("handles database connection failures with retries")
+  it("validates merchant_id maps to existing merchant database")
 })
 ```
 
 **Testing Infrastructure**:
 - **Effect.test**: Primary testing framework with built-in mocking and services
-- **Test Supabase Projects**: Separate test databases per merchant for integration tests
-- **In-Memory Services**: Mock Supabase clients for unit tests
+- **Test Databases**: Separate test databases per merchant for integration tests
+- **In-Memory Services**: Mock DB clients for unit tests
 - **Property-Based Testing**: Use Effect's generators for edge case discovery
 
 **Test Data Strategy**:
@@ -539,11 +534,11 @@ beforeEach(() => cleanupTestDatabases())
 ```
 
 **Integration Test Approach**:
-- **Real Supabase**: Use dedicated test projects for end-to-end scenarios
+- **Real Databases**: Use dedicated test databases for end-to-end scenarios
 - **Background Jobs**: Test cron job execution with test data
 
 **What We Don't Test**:
-- **Platform Services**: Railway and Supabase internal behavior  
+- **Platform Services**: Railway and managed Postgres internal behavior  
 - **Human Operational Errors**: Wrong JWT usage, credential leaks
 - **Cross-Merchant Access**: Architecturally impossible with separate databases
 
@@ -600,7 +595,7 @@ const retryPolicy = Schedule.exponential("100 millis").pipe(
 
 **Migration Principles**:
 - **Effect-Native**: Use `@effect/sql-pg` PgMigrator for type-safe, forward-only migrations
-- **Per-Merchant Execution**: Each Supabase project migrated independently
+- **Per-Merchant Execution**: Each merchant database migrated independently
 - **CLI-Orchestrated**: Single migration command iterates through all merchant databases
 - **Failure Isolation**: One merchant's migration failure doesn't block others
 
@@ -631,4 +626,3 @@ credit-cli migrate run --version=latest
 - **Effect Integration**: Natural fit with existing Effect/SQL architecture
 
 **Rationale**: Leverage Effect's migration system while maintaining merchant isolation and operational simplicity.
-

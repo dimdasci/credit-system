@@ -41,8 +41,8 @@ Create detailed technical specifications that serve as implementation blueprints
 
 ### 2.1 Core System Design
 - **Component architecture**: Apps (server, CLI), packages (RPC, client, shared)
-- **Multi-tenant model**: JWT merchant_id → Supabase project routing
-- **Technology integration**: Effect + Railway + Supabase interaction patterns
+- **Multi-tenant model**: JWT merchant_id → merchant database routing
+- **Technology integration**: Effect + Railway + Postgres interaction patterns
 - **Project structure**: Monorepo organization, package dependencies
 
 **Essential Figures**:
@@ -71,7 +71,7 @@ Create detailed technical specifications that serve as implementation blueprints
 
 **Essential Figures**:
 - **Figure 4.1**: RPC Request Flow (JWT → validation → handler → response)
-- **Figure 4.2**: Authentication & Routing (JWT → merchant_id → Supabase project)
+- **Figure 4.2**: Authentication & Routing (JWT → merchant_id → merchant database)
 
 ## 5. Core Business Logic
 
@@ -101,7 +101,7 @@ Create detailed technical specifications that serve as implementation blueprints
 - **Operational procedures**: Merchant onboarding, incident response, monitoring
 
 **Essential Figures**:
-- **Figure 6.1**: Deployment Overview (Railway + Supabase + monitoring)
+- **Figure 6.1**: Deployment Overview (Railway + Postgres + monitoring)
 - **Figure 6.2**: Background Job Flow (cleanup, expiry, maintenance)
 
 ## Documentation Standards

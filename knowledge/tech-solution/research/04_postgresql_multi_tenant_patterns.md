@@ -142,8 +142,8 @@ export const AuthMiddleware = HttpMiddleware.make((app) =>
 JWT_SECRET=your-secret-key-for-signing-tokens
 
 # Per-merchant database connections
-MERCHANT_ACME_DATABASE_URL=postgresql://user:pass@acme.supabase.co:5432/postgres
-MERCHANT_DEMO_DATABASE_URL=postgresql://user:pass@demo.supabase.co:5432/postgres
+MERCHANT_ACME_DATABASE_URL=postgresql://user:pass@acme-db.example.com:5432/acme
+MERCHANT_DEMO_DATABASE_URL=postgresql://user:pass@demo-db.example.com:5432/demo
 
 # Can work with any PostgreSQL provider
 MERCHANT_PROD_DATABASE_URL=postgresql://user:pass@prod.amazonaws.com:5432/postgres
@@ -180,11 +180,11 @@ Notes:
 - **Per-merchant isolation**: Separate connection pools prevent cross-tenant data leaks
 - **Resource management**: Configurable pool sizes per merchant load
 - **Connection reuse**: Efficient connection pooling reduces overhead
-- **Provider agnostic**: Works with Supabase, AWS RDS, Google Cloud SQL, etc.
+- **Provider agnostic**: Works with any managed Postgres (AWS RDS, Google Cloud SQL, etc.)
 
 ## Key Advantages
 
-- **Database Provider Independent**: Not tied to Supabase-specific APIs
+- **Database Provider Independent**: Not tied to provider-specific APIs
 - **Custom JWT Control**: Full control over token lifecycle and claims
 - **Simple Architecture**: Direct PostgreSQL connections without extra abstraction layers  
 - **Cost Effective**: Pay only for database usage, not API calls
