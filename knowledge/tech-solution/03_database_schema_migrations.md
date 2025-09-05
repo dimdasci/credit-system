@@ -20,6 +20,10 @@ The Credit Management Service implements a **database-per-merchant** isolation s
 CREATE TABLE ledger_entries (
     entry_id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id           text NOT NULL,
+    -- IMPORTANT: lot_id is a SELF-REFERENCE to ledger_entries(entry_id)
+    -- There is NO separate "lots" table. A "lot" IS a credit ledger entry.
+    -- For credit entries (amount > 0): lot_id = entry_id (self-reference)
+    -- For debit entries (amount < 0): lot_id references the original credit entry
     lot_id            uuid NOT NULL REFERENCES ledger_entries(entry_id) DEFERRABLE INITIALLY DEFERRED,
     amount            integer NOT NULL,
     reason            text NOT NULL CHECK (reason IN (
@@ -224,6 +228,11 @@ CREATE TRIGGER auto_archive_operation_types_trigger
 #### idempotency_tracking (Duplicate Prevention)
 
 ```sql
+-- IMPLEMENTATION NOTE: The 4-state design below represents maximum complexity
+-- consideration. During implementation, consider starting with simpler 2-state 
+-- approach ('PROCESSING', 'COMPLETED') and evolving based on real requirements
+-- and developer team complexity assessment. Decision should be made during
+-- implementation phase based on actual MVP needs vs future-proofing trade-offs.
 CREATE TABLE idempotency_tracking (
     key_hash           text PRIMARY KEY,
     state              text NOT NULL CHECK (state IN (
@@ -745,7 +754,7 @@ erDiagram
     ledger_entries {
         uuid entry_id PK
         string user_id
-        uuid lot_id FK "self-reference to entry_id"
+        uuid lot_id FK "self-reference to entry_id (NO lots table)"
         decimal amount "positive=credit, negative=debit"
         string reason "purchase|welcome|promo|adjustment|debit|expiry|refund|chargeback"
         string operation_type
