@@ -1,11 +1,19 @@
 import * as path from "node:path"
 import type { UserConfig } from "vitest/config"
 
-const alias = (name: string) => {
+const packageAlias = (name: string) => {
   const target = process.env.TEST_DIST !== undefined ? "dist/dist/esm" : "src"
   return ({
     [`${name}/test`]: path.join(__dirname, "packages", name, "test"),
     [`${name}`]: path.join(__dirname, "packages", name, target)
+  })
+}
+
+const appAlias = (name: string) => {
+  const target = process.env.TEST_DIST !== undefined ? "dist/dist/esm" : "src"
+  return ({
+    [`${name}/test`]: path.join(__dirname, "apps", name, "test"),
+    [`${name}`]: path.join(__dirname, "apps", name, target)
   })
 }
 
@@ -27,9 +35,11 @@ const config: UserConfig = {
     },
     include: ["test/**/*.test.ts"],
     alias: {
-      ...alias("rpc"),
-      ...alias("client"),
-      ...alias("shared")
+      ...packageAlias("rpc"),
+      ...packageAlias("client"),
+      ...packageAlias("shared"),
+      ...appAlias("server"),
+      ...appAlias("cli")
     }
   }
 }
