@@ -63,14 +63,22 @@ pnpm run dev            # Start development server
 
 **CLI Tool**
 ```bash
-# Build and run CLI health check
+# Build the project including the CLI
 pnpm run build
-node build/esm/bin.js   # Check server health
+
+# Run the CLI using the convenience script (recommended)
+pnpm run cli
+
+# OR run directly using node (from project root)
+node apps/cli/build/esm/bin.js
+
+# OR from the CLI package directory
+cd apps/cli
+node build/esm/bin.js
 
 # CLI options
-node build/esm/bin.js --help     # Show help
-node build/esm/bin.js --version  # Show version
-node build/esm/bin.js --log-level debug  # Set log level
+pnpm run cli -- --help     # Show help
+pnpm run cli -- --version  # Show version
 ```
 
 ### 4. Monorepo Structure
