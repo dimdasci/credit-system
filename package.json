@@ -19,7 +19,8 @@
     "lint-fix": "pnpm lint --fix",
     "test": "vitest",
     "coverage": "vitest --coverage",
-    "dev": "cd apps/server && pnpm run dev"
+    "dev": "cd apps/server && pnpm run dev",
+    "cli": "node apps/cli/build/esm/bin.js"
   },
   "devDependencies": {
     "@babel/cli": "^7.25.9",
