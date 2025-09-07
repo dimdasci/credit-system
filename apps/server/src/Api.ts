@@ -3,28 +3,13 @@ import { HttpApiBuilder } from "@effect/platform"
 import { Effect, Layer } from "effect"
 import packageInfo from "../package.json" with { type: "json" }
 
-const getVersionInfo = () => Effect.sync(() => {
-  let commit = process.env.RAILWAY_GIT_COMMIT_SHA || "unknown"
-  
-  // Try to get git commit hash if in development
-  if (commit === "unknown" && process.env.NODE_ENV === "development") {
-    try {
-      const { execSync } = require('child_process')
-      commit = execSync('git rev-parse --short HEAD').toString().trim()
-    } catch {
-      // Fallback to unknown if git command fails
-      commit = "unknown"
-    }
-  }
-  
-  return {
-    version: packageInfo.version,
-    commit,
-    buildTime: new Date().toISOString(),
-    nodeVersion: process.version,
-    environment: process.env.NODE_ENV || "development"
-  }
-})
+const getVersionInfo = () => Effect.sync(() => ({
+  version: process.env.APP_VERSION || packageInfo.version,
+  commit: process.env.GIT_COMMIT_SHA || process.env.RAILWAY_GIT_COMMIT_SHA || "dev-local",
+  buildTime: process.env.BUILD_TIME || new Date().toISOString(),
+  nodeVersion: process.version,
+  environment: process.env.NODE_ENV || "development"
+}))
 
 const HealthApiLive = HttpApiBuilder.group(
   HealthApi,

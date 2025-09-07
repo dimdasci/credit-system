@@ -21,6 +21,20 @@ Comprehensive GitHub workflow practices including:
 - Sequential execution for dependent subtasks, parallel for independent ones
 - Clean integration testing on feature branches before main merge
 
+### [Versioning Strategy](./versioning-strategy.md)
+Application-centric versioning approach for monorepo management:
+- **Application Releases** - Git tags drive server application versioning
+- **Package Management** - Independent semantic versioning for packages
+- **Build-Time Injection** - Environment variables for version metadata
+- **Production Deployment** - Railway integration with version detection
+- **Version Endpoint** - `/version` API with comprehensive build information
+
+**Key Features:**
+- Clean git tag-based versioning (`v1.2.3`)
+- No runtime git commands - build-time injection only
+- Fallback strategies for development and production
+- Independent package versioning when needed
+
 ## Development Workflow Summary
 
 ```
