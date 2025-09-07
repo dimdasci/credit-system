@@ -1,12 +1,15 @@
-import { HttpApiBuilder, HttpMiddleware } from "@effect/platform"
+import { HttpApiBuilder, HttpMiddleware, HttpServer } from "@effect/platform"
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
 import { Layer } from "effect"
 import { createServer } from "node:http"
 import { ApiLive } from "./Api.js"
 
+const port = 3000
+
 const HttpLive = HttpApiBuilder.serve(HttpMiddleware.logger).pipe(
   Layer.provide(ApiLive),
-  Layer.provide(NodeHttpServer.layer(createServer, { port: 3000 }))
+  HttpServer.withLogAddress,
+  Layer.provide(NodeHttpServer.layer(createServer, { port }))
 )
 
 Layer.launch(HttpLive).pipe(NodeRuntime.runMain)
