@@ -16,3 +16,7 @@ The project documentation is available in the `knowledge` directory:
 ## Repository
 
 Project repository https://github.com/dimdasci/credit-system/. Use MCP tools to work with issues.
+
+## Commands
+
+`pnpm run dev` run from project root to start server in the development mode
