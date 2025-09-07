@@ -9,13 +9,15 @@ Credit Lodger is a minimal credit ledger service designed for managing user purc
 ## Knowledge Base
 
 The project documentation is available in the `knowledge` directory:
-- `knowledge/domain` contains detailed domain requirements, with summary and index in @knowledge/domain/00_domain_overview.md.
-- `knowledge/tech-solution` contains technical solution design and implementation details, @knowledge/tech-solution/00_index.md. 
+- `knowledge/domain` contains detailed domain requirements, with summary and index in @knowledge/domain/README.md.
+- `knowledge/tech-solution` contains technical solution design and implementation details, @knowledge/tech-solution/README.md.
 - `knowledge/guidelines/project/issue-tracking.md` contains guidelines for github issues usage.
 
 ## Repository
 
 Project repository https://github.com/dimdasci/credit-system/. Use MCP tools to work with issues.
+
+Github CLI tool `gh` is available in the project. 
 
 ## Commands
 
