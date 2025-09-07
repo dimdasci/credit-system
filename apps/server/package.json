@@ -22,7 +22,7 @@
     "check": "tsc -b tsconfig.json",
     "test": "vitest",
     "coverage": "vitest --coverage",
-    "dev": "tsx src/server.ts"
+    "dev": "APP_VERSION=$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo 'dev-0.0.0') GIT_COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo 'dev-local') BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) tsx src/server.ts"
   },
   "dependencies": {
     "@effect/platform": "latest",
