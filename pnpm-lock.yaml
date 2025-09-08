@@ -114,9 +114,6 @@ importers:
 
   apps/server:
     dependencies:
-      '@credit-system/client':
-        specifier: workspace:*
-        version: link:../../packages/client/dist
       '@credit-system/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc/dist
