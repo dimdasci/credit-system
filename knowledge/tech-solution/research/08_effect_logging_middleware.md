@@ -4,8 +4,8 @@ This document provides guidance on how to implement logging middleware in Effect
 
 ## Table of Contents
 
-- [Adding Logging Middleware in Effect.js Applications](#adding-logging-middleware-in-effectjs-applications)
-  - [Table of Contents](#table-of-contents)
+- [Adding Logging Middleware in Effect.js Platform]
+  - [Table of Contents]
   - [Introduction](#introduction)
   - [Defining Logging Middleware](#defining-logging-middleware)
   - [Implementing the Middleware](#implementing-the-middleware)
@@ -20,6 +20,7 @@ This document provides guidance on how to implement logging middleware in Effect
     - [Response Logging](#response-logging)
   - [Documentation References](#documentation-references)
   - [Complete Example](#complete-example)
+  - [Effect internal logger](#effect-internal-logger)
 
 ## Introduction
 
@@ -312,4 +313,103 @@ export const ApiLive = HttpApiBuilder.api(HealthApi).pipe(
 )
 ```
 
-This approach provides a type-safe, flexible way to add logging to your Effect.js applications while maintaining the recommended patterns from the official documentation.
+## Effect internal logger
+
+The `HttpMiddleware.logger` middleware enables logging for your entire application, providing insights into each request and response. Here's how to set it up:
+
+```ts
+import {
+  HttpMiddleware,
+  HttpRouter,
+  HttpServer,
+  HttpServerResponse
+} from "@effect/platform"
+import { listen } from "./listen.js"
+
+const router = HttpRouter.empty.pipe(
+  HttpRouter.get("/", HttpServerResponse.text("Hello World"))
+)
+
+// Apply the logger middleware globally
+const app = router.pipe(HttpServer.serve(HttpMiddleware.logger))
+
+listen(app, 3000)
+/*
+curl -i http://localhost:3000
+timestamp=... level=INFO fiber=#0 message="Listening on http://0.0.0.0:3000"
+timestamp=... level=INFO fiber=#19 message="Sent HTTP response" http.span.1=8ms http.status=200 http.method=GET http.url=/
+timestamp=... level=INFO fiber=#20 cause="RouteNotFound: GET /favicon.ico not found
+    at ...
+    at http.server GET" http.span.2=4ms http.status=500 http.method=GET http.url=/favicon.ico
+*/
+```
+
+To disable the logger for specific routes, you can use `HttpMiddleware.withLoggerDisabled`:
+
+```ts
+import {
+  HttpMiddleware,
+  HttpRouter,
+  HttpServer,
+  HttpServerResponse
+} from "@effect/platform"
+import { listen } from "./listen.js"
+
+// Create the router with routes that will and will not have logging
+const router = HttpRouter.empty.pipe(
+  HttpRouter.get("/", HttpServerResponse.text("Hello World")),
+  HttpRouter.get(
+    "/no-logger",
+    HttpServerResponse.text("no-logger").pipe(HttpMiddleware.withLoggerDisabled)
+  )
+)
+
+// Apply the logger middleware globally
+const app = router.pipe(HttpServer.serve(HttpMiddleware.logger))
+
+listen(app, 3000)
+/*
+curl -i http://localhost:3000/no-logger
+timestamp=2024-05-19T09:53:29.877Z level=INFO fiber=#0 message="Listening on http://0.0.0.0:3000"
+*/
+```
+
+Source code of `HttpMiddleware.logger`:
+
+```typescript
+/** @internal */
+export const logger = make((httpApp) => {
+  let counter = 0
+  return Effect.withFiberRuntime((fiber) => {
+    const request = Context.unsafeGet(fiber.currentContext, ServerRequest.HttpServerRequest)
+    return Effect.withLogSpan(
+      Effect.flatMap(Effect.exit(httpApp), (exit) => {
+        if (fiber.getFiberRef(loggerDisabled)) {
+          return exit
+        } else if (exit._tag === "Failure") {
+          const [response, cause] = ServerError.causeResponseStripped(exit.cause)
+          return Effect.zipRight(
+            Effect.annotateLogs(Effect.log(cause._tag === "Some" ? cause.value : "Sent HTTP Response"), {
+              "http.method": request.method,
+              "http.url": request.url,
+              "http.status": response.status
+            }),
+            exit
+          )
+        }
+        return Effect.zipRight(
+          Effect.annotateLogs(Effect.log("Sent HTTP response"), {
+            "http.method": request.method,
+            "http.url": request.url,
+            "http.status": exit.value.status
+          }),
+          exit
+        )
+      }),
+      `http.span.${++counter}`
+    )
+  })
+})
+```
+
+Located in `node_modules/.pnpm/@effect+platform@0.90.7_effect@3.17.13/node_modules/@effect/platform/src/internal/httpMiddleware.ts` file.
