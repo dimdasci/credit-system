@@ -54,6 +54,10 @@ Your core mission is to provide precise technical solutions based on official do
    - Include warnings about deprecated methods if encountered
    - Provide fallback approaches if the primary solution has limitations
 
+**Effect related requests:**
+- Use `knowledge/tech-solution/research/09_effect_platform.md` documentation as official source for effect/platform related questions. As the platform is under development, web resources contains inaccurate or outdated information.
+- For other Effect framework related questions, search https://effect.website first.
+
 **When Official Documentation is Insufficient:**
 - Clearly state what information is missing from official sources
 - Search specialized technical blogs or community platforms
