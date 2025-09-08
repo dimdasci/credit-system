@@ -60,7 +60,7 @@ This guide shows how to use Effect Config to supply runtime parameters (for exam
 
 We want `NodeHttpServer.layer(createServer, { port })` to be driven by configuration (env-first, with a sensible default).
 
-> Pattern summary: Build the platform layer from config using `Layer.unwrap`, and provide an env-backed `ConfigProvider` to the stack.
+> Pattern summary: Build the platform layer from config using `Layer.unwrapEffect`, and provide an env-backed `ConfigProvider` to the stack.
 
 ```ts
 import { HttpApiBuilder, HttpMiddleware, HttpServer } from "@effect/platform"
@@ -75,7 +75,7 @@ const ServerConfig = Config.all({
 })
 
 // 2) Build a Node server layer from config
-const NodeServerFromConfig = Layer.unwrap(
+const NodeServerFromConfig = Layer.unwrapEffect(
   Effect.gen(function* () {
     const { port } = yield* ServerConfig
     return NodeHttpServer.layer(createServer, { port })
@@ -95,9 +95,47 @@ Layer.launch(HttpLive).pipe(NodeRuntime.runMain)
 ```
 
 Notes
-- `Layer.unwrap` lets us read config in an effect, then return the concrete platform layer
+- `Layer.unwrapEffect` lets us read config in an effect, then return the concrete platform layer
 - `Config.number("PORT").withDefault(3000)` gives safety + local dev default
 - `ConfigProvider.fromEnv()` integrates with `process.env` (works with direnv/.env)
+
+### Self‑sufficient server layer + runMain (avoids TS overload/this typing issues)
+
+Provide the env `ConfigProvider` inside the server layer and call `runMain` directly without piping
+to ensure the final effect has no remaining requirements (R = never) and avoid TypeScript overload
+resolution issues.
+
+```ts
+import { HttpApiBuilder, HttpMiddleware, HttpServer } from "@effect/platform"
+import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
+import { Config, ConfigProvider, Effect, Layer } from "effect"
+import { createServer } from "node:http"
+import { ApiLive } from "./Api.js"
+
+const ServerConfig = Config.all({
+  port: Config.number("PORT").pipe(Config.withDefault(3000)),
+  host: Config.string("HOST").pipe(Config.withDefault("0.0.0.0"))
+})
+
+// Provide Env provider inside this layer so it has no external requirements
+const EnvProvider = Layer.setConfigProvider(ConfigProvider.fromEnv())
+
+const NodeServerFromConfig = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const { host, port } = yield* ServerConfig
+    return NodeHttpServer.layer(createServer, { host, port })
+  })
+).pipe(Layer.provide(EnvProvider))
+
+const HttpLive = HttpApiBuilder.serve(HttpMiddleware.logger).pipe(
+  Layer.provide(ApiLive),
+  HttpServer.withLogAddress,
+  Layer.provide(NodeServerFromConfig)
+)
+
+// No pipe here; ensures clean overload selection with R = never
+NodeRuntime.runMain(Layer.launch(HttpLive))
+```
 
 ---
 
@@ -188,13 +226,23 @@ Quoted highlight
 - How does this relate to Swagger/client derivation?
   - Unrelated to derivation itself; config primarily wires runtime parameters (server, clients, DBs) into layers.
 
+- TypeScript overload/this typing issue with `runMain`
+  - If TS still complains about overloads or `this` context, either:
+    - Use the curried overload: `NodeRuntime.runMain()(Layer.launch(HttpLive))`, or
+    - Explicitly type the launched effect:
+      ```ts
+      import { Effect } from "effect"
+      const main = Layer.launch(HttpLive) as Effect.Effect<never, unknown, never>
+      NodeRuntime.runMain(main)
+      ```
+
 ---
 
 ## Quick Checklist
 
 - Define descriptors with sensible defaults
 - Provide `ConfigProvider.fromEnv()` once at the top-layer
-- Build platform layers from config using `Layer.unwrap`
+- Build platform layers from config using `Layer.unwrapEffect`
 - Fail fast on missing required config; use `Config.option` only when truly optional
 
 ---
