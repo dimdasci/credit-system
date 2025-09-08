@@ -15,10 +15,10 @@ Background jobs run via PostgreSQL pg_cron within merchant databases.
   "$schema": "https://schema.up.railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "pnpm install && pnpm run build"
+    "buildCommand": "pnpm install --frozen-lockfile && pnpm -w run build"
   },
   "deploy": {
-    "startCommand": "pnpm run start:server"
+    "startCommand": "node apps/server/build/esm/server.js"
   }
 }
 ```
