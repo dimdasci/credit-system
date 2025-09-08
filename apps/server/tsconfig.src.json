@@ -2,9 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "include": ["src"],
   "references": [
-    { "path": "../../packages/rpc" },
-    { "path": "../../packages/shared" },
-    { "path": "../../packages/client" }
+    { "path": "../../packages/rpc/tsconfig.src.json" },
+    { "path": "../../packages/shared/tsconfig.src.json" },
+    { "path": "../../packages/client/tsconfig.src.json" }
   ],
   "compilerOptions": {
     "types": ["node"],

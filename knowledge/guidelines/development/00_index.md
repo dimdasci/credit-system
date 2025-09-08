@@ -35,6 +35,13 @@ Application-centric versioning approach for monorepo management:
 - Fallback strategies for development and production
 - Independent package versioning when needed
 
+### [TypeScript Project References](./ts-project-references.md)
+Avoid TS6305 and import/build errors in a pnpm monorepo:
+- Reference per-target `tsconfig.src.json` from apps (not package aggregators)
+- Set `noEmit: true` in `tsconfig.test.json` for packages
+- Keep declarations out of `build/test`; emit to `build/dts`
+- Clean and rebuild when outputs drift
+
 ## Development Workflow Summary
 
 ```
