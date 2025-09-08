@@ -3,11 +3,10 @@ import { Schema } from "effect"
 
 export const Health = Schema.Struct({ status: Schema.Literal("ok") })
 
-export class HealthApiGroup extends HttpApiGroup.make("health")
+export const HealthApiGroup = HttpApiGroup.make("health")
   .add(
     HttpApiEndpoint.get("getHealth", "/health")
       .addSuccess(Health)
   )
-{}
 
-export class HealthApi extends HttpApi.make("api").add(HealthApiGroup) {}
+export const HealthApi = HttpApi.make("api").add(HealthApiGroup)

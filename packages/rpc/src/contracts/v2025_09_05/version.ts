@@ -9,9 +9,8 @@ export const Version = Schema.Struct({
   environment: Schema.String
 })
 
-export class VersionApiGroup extends HttpApiGroup.make("version")
+export const VersionApiGroup = HttpApiGroup.make("version")
   .add(
     HttpApiEndpoint.get("getVersion", "/version")
       .addSuccess(Version)
   )
-{}
