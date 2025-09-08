@@ -150,6 +150,63 @@ The `/version` endpoint provides comprehensive build information:
 - Link releases to GitHub issues/PRs
 - Update API documentation with version changes
 
+## Optional CI Automation
+
+Automate injecting version and build metadata during tagged releases. Example with GitHub Actions + Railway CLI:
+
+```yaml
+name: Deploy (tag)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Inject version metadata into Railway variables
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          SHORT_SHA=${SHA::7}
+          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+          railway variables set APP_VERSION=${TAG}
+          railway variables set GIT_COMMIT_SHA=${SHORT_SHA}
+          railway variables set BUILD_TIME=${BUILD_TIME}
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway deploy
+```
+
+Notes
+- Store a `RAILWAY_TOKEN` in repo secrets.
+- This persists `APP_VERSION`, `GIT_COMMIT_SHA`, and `BUILD_TIME` in the Railway environment before deploying.
+- The server reads these via `process.env` (see `/version` endpoint fields).
+
 ## Future Enhancements
 
 Consider these tools for advanced versioning:

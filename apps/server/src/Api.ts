@@ -1,11 +1,12 @@
 import { HealthApi, VersionApiGroup } from "@credit-system/rpc"
 import { HttpApiBuilder } from "@effect/platform"
 import { Effect, Layer } from "effect"
-import packageInfo from "../package.json" with { type: "json" }
 
 const getVersionInfo = () =>
   Effect.sync(() => ({
-    version: process.env.APP_VERSION || packageInfo.version,
+    // Version should come from git tags injected via APP_VERSION
+    // Fallback for local/dev when no tag is present
+    version: process.env.APP_VERSION || "dev-0.0.0",
     commit: process.env.GIT_COMMIT_SHA || process.env.RAILWAY_GIT_COMMIT_SHA || "dev-local",
     buildTime: process.env.BUILD_TIME || new Date().toISOString(),
     nodeVersion: process.version,
