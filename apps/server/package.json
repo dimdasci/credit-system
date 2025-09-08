@@ -15,21 +15,21 @@
   },
   "scripts": {
     "codegen": "build-utils prepare-v2",
-    "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2",
+    "build": "pnpm build-esm && cp package.json build/ && sed -i '' 's|node build/esm/server.js|node esm/server.js|' build/package.json",
     "build-esm": "tsc -b tsconfig.build.json",
     "build-cjs": "babel build/esm --plugins @babel/transform-export-namespace-from --plugins @babel/transform-modules-commonjs --out-dir build/cjs --source-maps",
     "build-annotate": "babel build/esm --plugins annotate-pure-calls --out-dir build/esm --source-maps",
     "check": "tsc -b tsconfig.json",
     "test": "vitest",
     "coverage": "vitest --coverage",
-    "dev": "APP_VERSION=$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo 'dev-0.0.0') GIT_COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo 'dev-local') BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) tsx src/server.ts"
+    "dev": "APP_VERSION=$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo 'dev-0.0.0') GIT_COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo 'dev-local') BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) tsx src/server.ts",
+    "start": "node build/esm/server.js"
   },
   "dependencies": {
     "@effect/platform": "latest",
     "@effect/platform-node": "latest",
     "@credit-system/rpc": "workspace:*",
     "@credit-system/shared": "workspace:*",
-    "@credit-system/client": "workspace:*",
     "effect": "latest"
   },
   "effect": {

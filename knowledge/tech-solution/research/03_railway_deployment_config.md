@@ -1,12 +1,13 @@
 # Railway Deployment Configuration
 
-## 1. Service Setup
+## Service Setup
 
-**Create two Railway services from same repo:**
-- **Web Service**: Main HTTP server (`apps/server`)  
-- **Cron Service**: Background jobs (`apps/server` with different entry point)
+**Single Railway service:**
+- **creditService**: HTTP RPC server (`apps/server`)
 
-## 2. Web Service Configuration
+Background jobs run via PostgreSQL pg_cron within merchant databases.
+
+## creditService Configuration
 
 ```json
 // railway.json in project root
@@ -14,10 +15,10 @@
   "$schema": "https://schema.up.railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm run build"
+    "buildCommand": "pnpm install && pnpm run build"
   },
   "deploy": {
-    "startCommand": "npm run start:server"
+    "startCommand": "pnpm run start:server"
   }
 }
 ```
@@ -27,61 +28,44 @@
   ```
   apps/server/**
   packages/rpc/**
-  packages/client/**
   packages/shared/**
   ```
 - **Don't set Root Directory** (breaks workspace dependencies)
 
-## 3. Cron Service Configuration
-
-```json
-// railway-cron.json (optional separate config)
-{
-  "deploy": {
-    "startCommand": "npm run jobs:cleanup"
-  }
-}
-```
-
-**Cron Schedule** (in service settings):
-```
-0 2 * * * # Daily at 2 AM
-```
-
-**Job Requirements:**
-- Jobs must exit after completion
-- No persistent processes
-- If previous job still running, next execution skipped
-
-## 4. Package.json Scripts
+## Package.json Scripts
 
 ```json
 {
   "scripts": {
-    "build": "npm run build --workspaces",
-    "start:server": "npm run start --workspace=apps/server",
-    "jobs:cleanup": "npm run cleanup --workspace=apps/server"
+    "build": "tsc -b tsconfig.build.json && pnpm --recursive --parallel run build",
+    "start:server": "cd apps/server/build && node esm/server.js"
   }
 }
 ```
 
-## 5. Multi-tenant Environment Variables
+## Environment Variables
 
-**Per-merchant database URLs:**
+**Required variables at Railway project level:**
+
 ```bash
+# Authentication
+JWT_SECRET=your-jwt-secret
+
+# Service config
+SERVICE_NAME=credit-system
+
+# Multi-tenant database URLs (add per merchant)
 MERCHANT_ACME_DATABASE_URL=postgres://user:pass@host:5432/acme
 MERCHANT_DEMO_DATABASE_URL=postgres://user:pass@host:5432/demo
 ```
 
-**Set at Railway project level**, accessible by all services.
+## Build Process
 
-## 6. Build Process
-
-**Automatic:** Railway's Nixpacks detects workspace dependencies and builds packages in correct order. No manual dependency management needed.
+Railway's Nixpacks detects workspace dependencies and builds packages in correct order. No manual dependency management needed.
 
 ## Key Points
 
 - **Watch paths prevent unnecessary rebuilds** when unrelated code changes
-- **Shared codebase** between web and cron services using different entry points  
 - **Workspace dependencies resolved automatically** by Railway's build system
-- **Environment variables shared** across services at project level
+- **Environment variables accessible** by the service
+- **Background jobs handled by pg_cron** in merchant databases

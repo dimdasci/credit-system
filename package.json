@@ -20,7 +20,8 @@
     "test": "vitest",
     "coverage": "vitest --coverage",
     "dev": "cd apps/server && pnpm run dev",
-    "cli": "node apps/cli/build/esm/bin.js"
+    "cli": "node apps/cli/build/esm/bin.js",
+    "start:server": "cd apps/server/build && node esm/server.js"
   },
   "devDependencies": {
     "@babel/cli": "^7.25.9",
