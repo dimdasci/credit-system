@@ -11,7 +11,8 @@ Credit Lodger is a minimal credit ledger service designed for managing user purc
 The project documentation is available in the `knowledge` directory:
 - `knowledge/domain` contains detailed domain requirements, with summary and index in @knowledge/domain/README.md.
 - `knowledge/tech-solution` contains technical solution design and implementation details, @knowledge/tech-solution/README.md.
-- `knowledge/guidelines/project/issue-tracking.md` contains guidelines for github issues usage.
+- `knowledge/guidelines/project/` contains guidelines for github issues usage.
+- `knowledge/guidelines/development/` contains coding guidelines and best practices.
 
 ## Type Safety
 
