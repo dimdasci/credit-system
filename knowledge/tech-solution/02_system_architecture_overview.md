@@ -27,7 +27,7 @@ Packages
 ## 2.2 Request, Trace, and Data Flow
 
 ```
-Client → HTTP RPC → Auth (JWT merchant_id) → Request Runtime
+Client → HTTP RPC → Auth (JWT sub) → Request Runtime
   → DB pool selection (MERCHANT_<ID>_DATABASE_URL)
   → Domain services (Ledger, Operation, Product)
   → Response (typed success | tagged error)
@@ -35,7 +35,7 @@ Client → HTTP RPC → Auth (JWT merchant_id) → Request Runtime
 Tracing/Errors
   → Effect spans (Effect.fn / withSpan) → OpenTelemetry NodeSDK
   → SentrySpanProcessor → Sentry (traces + errors + profiles)
-  → Scope tags: merchant_id, request info
+  → Scope tags: merchantId (from sub), request info
 ```
 
 Key points:
@@ -45,8 +45,10 @@ Key points:
 
 ## 2.3 Multi‑Tenant Strategy (Postgres)
 
+Note: In JWTs, `sub` is the merchant’s id — the same identifier referred to in the domain as `merchant_id`.
+
 - Isolation: one Postgres database per merchant.
-- Routing: `merchant_id` in JWT → select `MERCHANT_<UPPER_ID>_DATABASE_URL`.
+- Routing: `sub` in JWT (merchant id) → select `MERCHANT_<UPPER_ID>_DATABASE_URL`.
 - Resource control: connection pool per merchant; no cross‑tenant reuse.
 - SQL only: no provider‑specific features required.
 - Auditability: ledger is the source of truth; read models are optional.
@@ -61,7 +63,7 @@ MERCHANT_DEMO_DATABASE_URL=postgres://user:pass@host:5432/demo
 
 - NodeSDK with `SentrySpanProcessor` and `SentryPropagator` (100% sampling initially).
 - `Effect.fn` for broad function‑level spans; `Effect.withSpan` on hot paths.
-- Request middleware sets `merchant_id` and request tags.
+- Request middleware sets `merchantId` (derived from `sub`) and request tags.
 - Effect cause capture helper forwards failures to Sentry.
 
 Reference: see research “Sentry Integration (Effect + OpenTelemetry)”.
@@ -110,7 +112,7 @@ repo/
 ### Figure 2.1 — System Overview
 ```mermaid
 flowchart LR
-  C[Client] -->|JWT (merchant_id)| G[HTTP RPC Server]
+  C[Client] -->|JWT (sub)| G[HTTP RPC Server]
   subgraph Runtime
     G --> A[Auth + Merchant Context]
     A --> D[Domain Services]

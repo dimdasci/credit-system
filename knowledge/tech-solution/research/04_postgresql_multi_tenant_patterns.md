@@ -43,9 +43,9 @@ export class DatabaseManager {
 import jwt from 'jsonwebtoken'
 
 interface MerchantToken {
-  merchant_id: string
-  scope: string
+  sub: string // merchant id
   iat: number
+  exp: number | null
 }
 
 export class JwtService {
@@ -54,12 +54,11 @@ export class JwtService {
   createMerchantToken(merchantId: string): string {
     return jwt.sign(
       {
-        merchant_id: merchantId,
-        scope: 'ledger:read ledger:write'
+        sub: merchantId,
+        exp: null // non-expiring token for research simplicity
       },
       this.secret,
       { 
-        expiresIn: '365d', // Long-lived service tokens
         issuer: 'credit-ledger-service'
       }
     )
@@ -122,12 +121,12 @@ export const AuthMiddleware = HttpMiddleware.make((app) =>
     )
     
     const dbManager = yield* _(DatabaseManager)
-    const pool = dbManager.getConnection(payload.merchant_id)
+    const pool = dbManager.getConnection(payload.sub)
     
     return yield* _(
       app,
       Effect.provideService(DatabaseContext, {
-        merchantId: payload.merchant_id,
+        merchantId: payload.sub,
         pool
       })
     )

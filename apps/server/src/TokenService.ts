@@ -22,11 +22,11 @@ export const TokenServiceLive = Layer.scoped(
 
           const token = jwt.sign(
             {
-              merchantId,
+              sub: merchantId,
+              aud: "credit-ledger-api",
               iat: Math.floor(Date.now() / 1000)
             },
-            secretValue,
-            { expiresIn: "30d" }
+            secretValue
           )
 
           return { merchantId, token }

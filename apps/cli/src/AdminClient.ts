@@ -1,9 +1,7 @@
-import { AdminApiGroup } from "@credit-system/rpc"
-import { HttpApi, HttpApiClient } from "@effect/platform"
+import { AdminApiPublic } from "@credit-system/rpc"
+import { HttpApiClient } from "@effect/platform"
 import { Effect } from "effect"
 import { CliConfig } from "./CliConfig.js"
-
-const AdminApi = HttpApi.make("api").add(AdminApiGroup)
 
 export class AdminClient extends Effect.Service<AdminClient>()("cli/AdminClient", {
   accessors: true,
@@ -11,11 +9,11 @@ export class AdminClient extends Effect.Service<AdminClient>()("cli/AdminClient"
     const config = yield* CliConfig
     const baseUrl = `http://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port}`
 
-    const client = yield* HttpApiClient.make(AdminApi, {
+    const client = yield* HttpApiClient.make(AdminApiPublic, {
       baseUrl
     })
 
-    const generateMerchantToken = client.admin.generateMerchantToken({ payload: {} }).pipe(
+    const generateMerchantToken = client["admin-public"].generateMerchantToken({ payload: {} }).pipe(
       Effect.flatMap((res) =>
         Effect.gen(function*() {
           yield* Effect.logInfo(`Generated merchant token:`)

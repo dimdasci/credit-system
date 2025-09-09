@@ -70,14 +70,14 @@ export const selectRouter = (requested: string): Router.Router<any> => {
 ### Idempotency Header
 
 - Header: `Idempotency-Key` (required for all write commands)
-- Scope: Key uniqueness is enforced per `{merchant_id} + {command_type}` within a 7-day window.
+- Scope: Key uniqueness is enforced per `{merchantId} + {command_type}` within a 7-day window.
 - Commands: `Purchase.Settled`, `Operation.Open`, `Operation.RecordAndClose`, `Grant.Apply`, `CreditAdjustment.Apply`, `Refund.Apply`, `Chargeback.Apply`.
 - Behavior:
   - First request: server creates a PENDING record, processes, then stores result as `SUCCEEDED` (or a terminal failure state).
   - Duplicate while processing: server may return a typed error indicating in-progress with a short retry hint (implementation detail), without duplicating effects.
   - Duplicate after success: server returns the original materialized result (exact same payload) with success.
   - Conflicting duplicate (same key, different parameters): server returns a typed error describing the conflict; no state change occurs.
-- Internal mapping: Transaction ID is derived deterministically, e.g. `uuidv5(merchant_id + ':' + command_type + ':' + idempotency_key)`. Storage retains records for 7 days for de-duplication.
+- Internal mapping: Transaction ID is derived deterministically, e.g. `uuidv5(merchantId + ':' + command_type + ':' + idempotency_key)`. Storage retains records for 7 days for de-duplication.
 
 Client usage example (HTTP transport):
 ```http
@@ -533,15 +533,13 @@ export class ListReceipts extends Request.TaggedRequest("ListReceipts")<
 
 ### JWT Token Structure
 
-Based on the authentication decisions in [brief.md](brief.md), the system uses permanent JWT tokens with embedded merchant context:
+The system uses JWT tokens where the merchant itself is the subject. `sub` is the single source of truth for merchant identification and drives tenant routing. Permanent (non-expiring) tokens are allowed by setting `exp` to `null`.
 
 ```typescript
 // packages/shared/src/auth/JwtTypes.ts
 export const JwtClaims = Schema.Struct({
-  sub: Schema.String, // service-account-id
-  merchant_id: Schema.String, // acme-corp
+  sub: Schema.String, // merchant-id (tenant id)
   aud: Schema.Literal("credit-ledger-api"),
-  scope: Schema.String, // "ledger:read ledger:write"
   iat: Schema.Number,
   exp: Schema.Union(Schema.Number, Schema.Null) // null for permanent tokens
 })
@@ -561,8 +559,6 @@ export class MerchantContext extends Context.Tag("MerchantContext")<
   MerchantContext,
   {
     merchantId: string
-    scope: string[]
-    serviceAccountId: string
   }
 >() {}
 
@@ -587,23 +583,19 @@ export const JwtAuthMiddleware = <R, E, A>(
       })
     )
     
-    // Validate merchant_id and create context
-    const merchantId = decoded.merchant_id
+    // Validate subject and create context
+    const merchantId = decoded.sub
     if (!merchantId) {
-      yield* _(Effect.fail(new MissingMerchantIdError()))
+      yield* _(Effect.fail(new MissingSubjectError()))
     }
     
-    // Validate merchant exists (check database URL configuration)
+    // Optional: Validate merchant exists (check configuration)
     const merchantExists = yield* _(validateMerchantExists(merchantId))
     if (!merchantExists) {
       yield* _(Effect.fail(new InvalidMerchantError(merchantId)))
     }
     
-    const merchantContext = {
-      merchantId,
-      scope: decoded.scope.split(' '),
-      serviceAccountId: decoded.sub
-    }
+    const merchantContext = { merchantId }
     
     // Execute handler with merchant context
     return yield* _(
@@ -645,9 +637,9 @@ export const InvalidJwtError = Schema.Struct({
   reason: Schema.String
 })
 
-export const MissingMerchantIdError = Schema.Struct({
-  _tag: Schema.Literal("MissingMerchantId"),
-  message: Schema.Literal("JWT must contain merchant_id claim")
+export const MissingSubjectError = Schema.Struct({
+  _tag: Schema.Literal("MissingSubject"),
+  message: Schema.Literal("JWT must contain sub claim (merchant id)")
 })
 
 export const InvalidMerchantError = Schema.Struct({
@@ -655,18 +647,14 @@ export const InvalidMerchantError = Schema.Struct({
   merchantId: Schema.String
 })
 
-export const InsufficientScopeError = Schema.Struct({
-  _tag: Schema.Literal("InsufficientScope"),
-  requiredScope: Schema.String,
-  actualScope: Schema.Array(Schema.String)
-})
+// Scopes are not used in the current design; authorization is handled upstream.
 
 export type AuthError = 
   | typeof AuthenticationRequiredError.Type
   | typeof InvalidJwtError.Type
-  | typeof MissingMerchantIdError.Type
+  | typeof MissingSubjectError.Type
   | typeof InvalidMerchantError.Type
-  | typeof InsufficientScopeError.Type
+  // No scope error variant in current design
 ```
 
 ### Versioning Error Types
@@ -954,7 +942,7 @@ sequenceDiagram
     Note over Middleware: JWT Validation Block
     Middleware->>Middleware: 1. Extract Bearer Token
     Middleware->>Middleware: 2. Verify JWT Signature
-    Middleware->>Middleware: 3. Validate merchant_id
+    Middleware->>Middleware: 3. Validate sub (merchantId)
     Middleware->>Middleware: 4. Check Merchant Config
     
     alt JWT Valid
@@ -986,7 +974,7 @@ sequenceDiagram
 flowchart TD
     subgraph "Client Layer"
         CLIENT[Client Application]
-        JWT_TOKEN[JWT Token<br/>merchant_id: acme-corp]
+        JWT_TOKEN[JWT Token<br/>sub: acme-corp]
     end
     
     subgraph "Authentication Gateway"
@@ -998,7 +986,7 @@ flowchart TD
     subgraph "Business Layer"
         RPC_ROUTER[RPC Router]
         HANDLER[Request Handler]
-        MERCHANT_CTX[Merchant Context<br/>merchantId: acme-corp<br/>scope: [ledger:read, ledger:write]]
+        MERCHANT_CTX[Merchant Context<br/>merchantId: acme-corp]
     end
     
     subgraph "Data Layer (Per Merchant)"
@@ -1038,11 +1026,10 @@ flowchart TD
 ```
 
 **Authentication & Routing Principles:**
-- **JWT-Based Context**: merchant_id claim determines database routing
-- **Permanent Tokens**: Service-to-service communication uses long-lived JWTs
+- **JWT-Based Context**: `sub` (merchant id) determines database routing
+- **Permanent Tokens**: Service-to-service communication can use non-expiring JWTs (`exp = null`)
 - **Complete Isolation**: Each merchant routes to separate database
 - **Type-Safe Validation**: Effect Schema validates all claims and routing parameters
-- **Scope-Based Authorization**: JWT scopes control operation permissions per merchant
 
 ## Implementation Notes
 
@@ -1061,8 +1048,7 @@ flowchart TD
 
 ### Security Considerations
 - **Network Security**: Assume private network deployment (Railway services)
-- **Token Scope**: Validate JWT scope matches required operation permissions
-- **Merchant Validation**: Always verify merchant_id maps to valid configuration
+- **Merchant Validation**: Always verify `sub` (merchant id) maps to valid configuration
 - **Request Validation**: Schema validation prevents injection and malformed data
 
 This API contract specification provides complete type-safe integration patterns for upstream applications while maintaining the multi-tenant security boundaries and lean system architecture established in the technical brief.
