@@ -8,7 +8,7 @@ export class HealthClient extends Effect.Service<HealthClient>()("cli/HealthClie
   effect: Effect.gen(function*() {
     const config = yield* CliConfig
     const baseUrl = `http://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port}`
-    
+
     const client = yield* HttpApiClient.make(HealthApi, {
       baseUrl
     })
