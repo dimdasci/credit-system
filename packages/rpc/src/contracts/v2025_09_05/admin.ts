@@ -14,12 +14,16 @@ export const GetMerchantIdResponse = Schema.Struct({
   merchantId: Schema.String
 })
 
-export const AdminApiGroup = HttpApiGroup.make("admin")
+export const AdminApiPublicGroup = HttpApiGroup.make("admin-public")
   .add(
     HttpApiEndpoint.post("generateMerchantToken", "/admin/generate-merchant-token")
       .addSuccess(GenerateMerchantTokenResponse)
       .setPayload(GenerateMerchantTokenRequest)
   )
+
+export const AdminApiPublic = HttpApi.make("api").add(AdminApiPublicGroup)
+
+export const AdminApiGroup = HttpApiGroup.make("admin")
   .add(
     HttpApiEndpoint.get("getMerchantId", "/admin/merchant-id")
       .addSuccess(GetMerchantIdResponse)
