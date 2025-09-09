@@ -42,9 +42,9 @@ const validateJwtAndExtractMerchantId = () =>
     const token = authHeader.substring(7)
     const secretValue = Redacted.value(config.jwtSecret)
     
-    // Verify JWT
+    // Verify JWT (jwt.verify is synchronous, not a promise)
     const decoded = yield* _(
-      Effect.tryPromise(() => jwt.verify(token, secretValue) as unknown).pipe(
+      Effect.try(() => jwt.verify(token, secretValue) as unknown).pipe(
         Effect.catchAll((error) => Effect.fail(new Error(`Invalid JWT: ${error}`)))
       )
     )
