@@ -41,7 +41,7 @@ Create detailed technical specifications that serve as implementation blueprints
 
 ### 2.1 Core System Design
 - **Component architecture**: Apps (server, CLI), packages (RPC, client, shared)
-- **Multi-tenant model**: JWT merchant_id → merchant database routing
+- **Multi-tenant model**: JWT `sub` (merchant id) → merchant database routing
 - **Technology integration**: Effect + Railway + Postgres interaction patterns
 - **Project structure**: Monorepo organization, package dependencies
 
@@ -66,12 +66,12 @@ Create detailed technical specifications that serve as implementation blueprints
 ### 4.1 RPC Schema & Auth
 - **Core schemas**: Purchase.Settled, Operation.Open/RecordAndClose, Grant.Apply, queries
 - **Error types**: InsufficientBalance, OperationExpired, AuthenticationFailed
-- **JWT structure**: merchant_id claim, permanent tokens, validation middleware
+- **JWT structure**: `sub` claim as merchant id, non-expiring token support, validation middleware
 - **Client patterns**: RPC client usage, retry logic, error handling
 
 **Essential Figures**:
 - **Figure 4.1**: RPC Request Flow (JWT → validation → handler → response)
-- **Figure 4.2**: Authentication & Routing (JWT → merchant_id → merchant database)
+- **Figure 4.2**: Authentication & Routing (JWT → sub → merchant database)
 
 ## 5. Core Business Logic
 
