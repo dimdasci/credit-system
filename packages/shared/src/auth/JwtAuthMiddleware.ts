@@ -25,7 +25,7 @@ const extractToken = (request: HttpServerRequest.HttpServerRequest): Effect.Effe
     const authHeader = request.headers.authorization
     
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      yield* _(Effect.fail(new AuthenticationRequiredError()))
+      return yield* _(Effect.fail(new AuthenticationRequiredError()))
     }
     
     return authHeader.substring(7) // Remove "Bearer "
@@ -34,10 +34,11 @@ const extractToken = (request: HttpServerRequest.HttpServerRequest): Effect.Effe
 const verifyAndDecodeJwt = (token: string, secret: string): Effect.Effect<JwtClaims, InvalidJwtError> =>
   Effect.gen(function* (_) {
     const decoded = yield* _(
-      Effect.tryPromise({
-        try: () => jwt.verify(token, secret) as unknown,
-        catch: (error) => new InvalidJwtError({ reason: String(error) })
-      })
+      Effect.tryPromise(() => jwt.verify(token, secret) as unknown).pipe(
+        Effect.catchAll((error) => 
+          Effect.fail(new InvalidJwtError({ reason: String(error) }))
+        )
+      )
     )
     
     // Validate the JWT payload matches our schema
@@ -60,7 +61,7 @@ export const JwtAuthMiddleware = HttpMiddleware.make((app) =>
     
     // Validate merchant_id is present
     if (!claims.merchant_id) {
-      yield* _(Effect.fail(new MissingMerchantIdError()))
+      return yield* _(Effect.fail(new MissingMerchantIdError()))
     }
     
     // Create merchant context

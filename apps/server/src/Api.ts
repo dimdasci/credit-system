@@ -1,7 +1,8 @@
 import { AdminApiGroup, HealthApi, VersionApiGroup } from "@credit-system/rpc"
-import { JwtAuthMiddleware, MerchantContext } from "@credit-system/shared"
-import { HttpApi, HttpApiBuilder } from "@effect/platform"
-import { Effect, Layer } from "effect"
+import { JwtClaims, ServerConfig } from "@credit-system/shared"
+import { HttpApi, HttpApiBuilder, HttpServerRequest } from "@effect/platform"
+import { Effect, Layer, Redacted, Schema } from "effect"
+import jwt from "jsonwebtoken"
 import { TokenService } from "./TokenService.js"
 
 const getVersionInfo = () =>
@@ -27,6 +28,37 @@ const VersionApiLive = HttpApiBuilder.group(
   (handlers) => handlers.handle("getVersion", () => getVersionInfo())
 )
 
+const validateJwtAndExtractMerchantId = () =>
+  Effect.gen(function*(_) {
+    const request = yield* _(HttpServerRequest.HttpServerRequest)
+    const config = yield* _(ServerConfig)
+    
+    // Extract Bearer token
+    const authHeader = request.headers.authorization
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return yield* _(Effect.fail(new Error("Authorization header required")))
+    }
+    
+    const token = authHeader.substring(7)
+    const secretValue = Redacted.value(config.jwtSecret)
+    
+    // Verify JWT
+    const decoded = yield* _(
+      Effect.tryPromise(() => jwt.verify(token, secretValue) as unknown).pipe(
+        Effect.catchAll((error) => Effect.fail(new Error(`Invalid JWT: ${error}`)))
+      )
+    )
+    
+    // Validate JWT structure  
+    const claims = yield* _(
+      Schema.decodeUnknown(JwtClaims)(decoded).pipe(
+        Effect.catchAll((error) => Effect.fail(new Error(`Invalid JWT structure: ${error}`)))
+      )
+    )
+    
+    return claims.merchant_id
+  })
+
 const AdminApiLive = HttpApiBuilder.group(
   HttpApi.make("api").add(AdminApiGroup),
   "admin",
@@ -38,16 +70,15 @@ const AdminApiLive = HttpApiBuilder.group(
           return yield* tokenService.generateMerchantToken()
         }))
       .handle("getMerchantId", () =>
-        Effect.gen(function*() {
-          const merchantContext = yield* MerchantContext
-          return { merchantId: merchantContext.merchantId }
+        Effect.gen(function*(_) {
+          const merchantId = yield* _(validateJwtAndExtractMerchantId())
+          return { merchantId }
         }))
 )
 
 const CombinedApi = HealthApi.add(VersionApiGroup).add(AdminApiGroup)
 
 export const ApiLive = HttpApiBuilder.api(CombinedApi).pipe(
-  HttpApiBuilder.middlewareEndpoint("admin/getMerchantId", JwtAuthMiddleware),
   Layer.provide(HealthApiLive),
   Layer.provide(VersionApiLive), 
   Layer.provide(AdminApiLive)
