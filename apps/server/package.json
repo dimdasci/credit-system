@@ -26,11 +26,12 @@
     "start": "node build/esm/server.js"
   },
   "dependencies": {
-    "@effect/platform": "latest",
-    "@effect/platform-node": "latest",
     "@credit-system/rpc": "workspace:*",
     "@credit-system/shared": "workspace:*",
-    "effect": "latest"
+    "@effect/platform": "latest",
+    "@effect/platform-node": "latest",
+    "effect": "latest",
+    "jsonwebtoken": "^9.0.2"
   },
   "effect": {
     "generateExports": {
@@ -43,5 +44,8 @@
         "**/*.ts"
       ]
     }
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10"
   }
 }

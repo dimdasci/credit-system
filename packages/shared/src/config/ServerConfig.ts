@@ -6,5 +6,6 @@ export const ServerConfig = Config.all({
   nodeEnv: Config.string("RAILWAY_ENVIRONMENT_NAME").pipe(
     Config.orElse(() => Config.string("NODE_ENV"))
   ).pipe(Config.withDefault("development")),
-  logLevel: Config.string("LOG_LEVEL").pipe(Config.withDefault("info"))
+  logLevel: Config.string("LOG_LEVEL").pipe(Config.withDefault("info")),
+  jwtSecret: Config.redacted("JWT_SECRET")
 })

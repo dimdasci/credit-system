@@ -4,6 +4,7 @@ import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
 import { ConfigProvider, Effect, Layer } from "effect"
 import { createServer } from "node:http"
 import { ApiLive } from "./Api.js"
+import { TokenServiceLive } from "./TokenService.js"
 
 // Provide env-backed ConfigProvider inside the server layer to avoid residual requirements
 const EnvProvider = Layer.setConfigProvider(ConfigProvider.fromEnv())
@@ -19,6 +20,7 @@ const NodeServerFromConfig = Layer.unwrapEffect(
 
 const HttpLive = HttpApiBuilder.serve(HttpMiddleware.logger).pipe(
   Layer.provide(ApiLive),
+  Layer.provide(TokenServiceLive),
   HttpServer.withLogAddress,
   Layer.provide(NodeServerFromConfig)
 )
