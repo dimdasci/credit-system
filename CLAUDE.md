@@ -35,3 +35,5 @@ Default assumption: Tasks are done when they work as specified and tests pass. D
 ## Commands
 
 `pnpm run dev` run from project root to start server in the development mode
+
+Avoid running plain tsc or editor “TypeScript: Compile” actions that don’t honor your build tsconfigs.
