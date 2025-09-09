@@ -42,6 +42,13 @@ Avoid TS6305 and import/build errors in a pnpm monorepo:
 - Keep declarations out of `build/test`; emit to `build/dts`
 - Clean and rebuild when outputs drift
 
+### [Architectural Principles](./architectural-principles.md)
+Key principles for code structure and separation of concerns:
+- **Contracts vs. Implementation:** How to properly separate the API contract from the server implementation.
+- **Monorepo Dependency Rules:** Guidelines for package dependencies to maintain a clean architecture.
+- **Effect Middleware & DI:** The correct patterns for applying middleware and providing services in Effect HTTP.
+
+
 ## Development Workflow Summary
 
 ```
