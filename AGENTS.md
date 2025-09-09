@@ -26,6 +26,7 @@ Credit Lodger is a minimal credit ledger service designed for managing user purc
 - Dev server: `pnpm run dev` (runs `apps/server`).
 - CLI: `pnpm run cli` (after build) or `node apps/cli/build/esm/bin.js`.
 - Per-package: `pnpm --filter @credit-system/server run dev` (use filters for targeted tasks).
+- Avoid running plain tsc or editor “TypeScript: Compile” actions that don’t honor your build tsconfigs.
 
 ## Coding Style & Naming
 - Language: TypeScript (strict). Imports prefer aliases (`@credit-system/*`).

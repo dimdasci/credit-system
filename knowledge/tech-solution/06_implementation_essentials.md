@@ -248,7 +248,7 @@ describe("RPC Integration", () => {
   it("handles authentication and merchant routing", () =>
     Effect.gen(function* (_) {
       const merchantId = "test-acme"
-      const jwt = yield* _(createTestJWT({ merchant_id: merchantId }))
+      const jwt = yield* _(createTestJWT({ sub: merchantId }))
       
       // Create RPC client with JWT
       const client = yield* _(

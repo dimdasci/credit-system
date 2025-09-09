@@ -44,6 +44,16 @@ packages/*/dist
 apps/*/build
 apps/*/dist
 
+# Stray compiled artifacts in source trees (TS projects)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+apps/*/src/**/*.js
+apps/*/src/**/*.js.map
+apps/*/src/**/*.d.ts
+apps/*/src/**/*.d.ts.map
+
 # Dependency directories
 node_modules/
 jspm_packages/

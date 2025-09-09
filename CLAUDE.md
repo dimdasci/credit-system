@@ -11,7 +11,8 @@ Credit Lodger is a minimal credit ledger service designed for managing user purc
 The project documentation is available in the `knowledge` directory:
 - `knowledge/domain` contains detailed domain requirements, with summary and index in @knowledge/domain/README.md.
 - `knowledge/tech-solution` contains technical solution design and implementation details, @knowledge/tech-solution/README.md.
-- `knowledge/guidelines/project/issue-tracking.md` contains guidelines for github issues usage.
+- `knowledge/guidelines/project/` contains guidelines for github issues usage.
+- `knowledge/guidelines/development/` contains coding guidelines and best practices.
 
 ## Type Safety
 
@@ -23,6 +24,17 @@ Project repository https://github.com/dimdasci/credit-system/. Use MCP tools to 
 
 Github CLI tool `gh` is available in the project. 
 
+### Task Definition Rule:
+
+Use only Acceptance Criteria for functional requirements. Skip Implementation Checklist and Definition of Done unless they add unique value:
+- Acceptance Criteria: What the feature must do (user/business perspective)
+- Implementation Checklist: Only if complex technical steps need tracking
+- Definition of Done: Only if non-standard quality gates apply (default: tests pass, code works)
+
+Default assumption: Tasks are done when they work as specified and tests pass. Don't repeat the same requirements in multiple sections.
+
 ## Commands
 
 `pnpm run dev` run from project root to start server in the development mode
+
+Avoid running plain tsc or editor “TypeScript: Compile” actions that don’t honor your build tsconfigs.

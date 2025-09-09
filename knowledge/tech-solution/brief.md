@@ -90,9 +90,9 @@ Effect.provideService(
 ```
 
 **Authentication Flow:**
-1. Upstream app gets JWT with merchant_id claim
+1. Upstream app gets JWT with `sub` claim (merchant id)
 2. Effect/rpc middleware validates token and extracts merchant context
-3. Automatic merchant database routing based on merchant_id
+3. Automatic merchant database routing based on `sub`
 4. All operations scoped to merchant boundary
 
 
@@ -367,23 +367,21 @@ CREATE INDEX idx_balance_user ON user_balance (user_id);
 **Token Structure**:
 ```json
 {
-  "sub": "service-account-id",
-  "merchant_id": "acme-corp", 
+  "sub": "acme-corp", // merchant id (tenant id)
   "aud": "credit-ledger-api",
-  "scope": "ledger:read ledger:write",
   "iat": 1640995200,
-  "exp": null // No expiration for service tokens
+  "exp": null // Non-expiring service tokens supported
 }
 ```
 
 **Authentication Flow**:
 - **Service-to-Service**: Upstream app uses permanent JWT in Authorization header
 - **CLI Authentication**: Same permanent JWT stored in environment variable (`CREDIT_SERVICE_JWT`)
-- **Merchant Context**: Extracted from `merchant_id` claim, used for merchant database routing
+- **Merchant Context**: Extracted from `sub` claim, used for merchant database routing
 
 **Security Boundaries**:
 - **Network Security**: Private Railway network prevents external access
-- **Token Scope**: Each token scoped to specific merchant operations only
+// No token scopes: authorization is handled by upstream services
 - **No User Tokens**: End users never directly authenticate with credit service
 
 **Benefits**:
