@@ -1,4 +1,5 @@
 import { AdminApiGroup, HealthApi, VersionApiGroup } from "@credit-system/rpc"
+import { JwtAuthMiddleware, MerchantContext } from "@credit-system/shared"
 import { HttpApi, HttpApiBuilder } from "@effect/platform"
 import { Effect, Layer } from "effect"
 import { TokenService } from "./TokenService.js"
@@ -30,17 +31,24 @@ const AdminApiLive = HttpApiBuilder.group(
   HttpApi.make("api").add(AdminApiGroup),
   "admin",
   (handlers) =>
-    handlers.handle("generateMerchantToken", () =>
-      Effect.gen(function*() {
-        const tokenService = yield* TokenService
-        return yield* tokenService.generateMerchantToken()
-      }))
+    handlers
+      .handle("generateMerchantToken", () =>
+        Effect.gen(function*() {
+          const tokenService = yield* TokenService
+          return yield* tokenService.generateMerchantToken()
+        }))
+      .handle("getMerchantId", () =>
+        Effect.gen(function*() {
+          const merchantContext = yield* MerchantContext
+          return { merchantId: merchantContext.merchantId }
+        }))
 )
 
 const CombinedApi = HealthApi.add(VersionApiGroup).add(AdminApiGroup)
 
 export const ApiLive = HttpApiBuilder.api(CombinedApi).pipe(
+  HttpApiBuilder.middlewareEndpoint("admin/getMerchantId", JwtAuthMiddleware),
   Layer.provide(HealthApiLive),
-  Layer.provide(VersionApiLive),
+  Layer.provide(VersionApiLive), 
   Layer.provide(AdminApiLive)
 )
