@@ -30,8 +30,13 @@
     "@credit-system/shared": "workspace:*",
     "@effect/platform": "latest",
     "@effect/platform-node": "latest",
+    "@effect/schema": "^0.75.5",
+    "@effect/sql": "^0.44.2",
+    "@effect/sql-pg": "^0.45.1",
+    "@types/pg": "^8.15.5",
     "effect": "latest",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3"
   },
   "effect": {
     "generateExports": {

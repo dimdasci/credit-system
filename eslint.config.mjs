@@ -92,8 +92,11 @@ export default [
       "@typescript-eslint/consistent-type-imports": "warn",
 
       "@typescript-eslint/no-unused-vars": ["error", {
-        argsIgnorePattern: "^_",
-        varsIgnorePattern: "^_"
+        "vars": "all",
+        "varsIgnorePattern": "^_",
+        "args": "after-used",
+        "argsIgnorePattern": "^_",
+        "ignoreRestSiblings": true
       }],
 
       "@typescript-eslint/ban-ts-comment": "off",
