@@ -16,8 +16,8 @@ const REQUIRED_TABLES = [
 
 export const SchemaManagerLive = Layer.effect(
   SchemaManager,
-  Effect.gen(function*(_) {
-    const databaseManager = yield* _(DatabaseManager)
+  Effect.gen(function*() {
+    const databaseManager = yield* DatabaseManager
 
     // Schema files loading was previously used; removed to avoid unused code warnings
 
