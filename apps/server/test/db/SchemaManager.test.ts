@@ -51,9 +51,9 @@ describe("SchemaManager", () => {
       // Mock successful SQL execution
       mockSql.mockReturnValue(Effect.succeed([]))
 
-      const program = Effect.gen(function*(_) {
-        const schemaManager = yield* _(SchemaManager)
-        return yield* _(schemaManager.initializeSchema("abcd-1234"))
+      const program = Effect.gen(function*() {
+        const schemaManager = yield* SchemaManager
+        return yield* schemaManager.initializeSchema("abcd-1234")
       })
 
       const runnable = Effect.provide(program, schemaManagerLayer).pipe(
@@ -72,10 +72,10 @@ describe("SchemaManager", () => {
       // Mock successful SQL execution
       mockSql.mockReturnValue(Effect.succeed([]))
 
-      const program = Effect.gen(function*(_) {
-        const schemaManager = yield* _(SchemaManager)
-        yield* _(schemaManager.initializeSchema("abcd-1234"))
-        yield* _(schemaManager.initializeSchema("abcd-1234"))
+      const program = Effect.gen(function*() {
+        const schemaManager = yield* SchemaManager
+        yield* schemaManager.initializeSchema("abcd-1234")
+        yield* schemaManager.initializeSchema("abcd-1234")
       })
 
       const runnable = Effect.provide(program, schemaManagerLayer).pipe(
@@ -91,9 +91,9 @@ describe("SchemaManager", () => {
     it("fails when merchant database URL is missing", () => {
       const { schemaManagerLayer } = makeTestLayers()
 
-      const program = Effect.gen(function*(_) {
-        const schemaManager = yield* _(SchemaManager)
-        return yield* _(schemaManager.initializeSchema("MISS"))
+      const program = Effect.gen(function*() {
+        const schemaManager = yield* SchemaManager
+        return yield* schemaManager.initializeSchema("MISS")
       })
 
       const runnable = Effect.provide(program, schemaManagerLayer).pipe(
@@ -118,9 +118,9 @@ describe("SchemaManager", () => {
       const sqlError = { _tag: "SqlError", message: "SQL execution failed" } as unknown as SqlError.SqlError
       mockSql.mockReturnValue(Effect.fail(sqlError))
 
-      const program = Effect.gen(function*(_) {
-        const schemaManager = yield* _(SchemaManager)
-        return yield* _(schemaManager.initializeSchema("abcd-1234"))
+      const program = Effect.gen(function*() {
+        const schemaManager = yield* SchemaManager
+        return yield* schemaManager.initializeSchema("abcd-1234")
       })
 
       const runnable = Effect.provide(program, schemaManagerLayer).pipe(
@@ -146,9 +146,9 @@ describe("SchemaManager", () => {
       // Mock all tables exist (return count > 0 for each table)
       mockSql.mockReturnValue(Effect.succeed([{ count: "1" }])) // All required tables exist
 
-      const program = Effect.gen(function*(_) {
-        const schemaManager = yield* _(SchemaManager)
-        return yield* _(schemaManager.validateSchema("abcd-1234"))
+      const program = Effect.gen(function*() {
+        const schemaManager = yield* SchemaManager
+        return yield* schemaManager.validateSchema("abcd-1234")
       })
 
       const runnable = Effect.provide(program, schemaManagerLayer).pipe(
@@ -165,9 +165,9 @@ describe("SchemaManager", () => {
       // Mock some tables missing (return count = 0 for some tables)
       mockSql.mockReturnValue(Effect.succeed([{ count: "0" }])) // Tables missing
 
-      const program = Effect.gen(function*(_) {
-        const schemaManager = yield* _(SchemaManager)
-        return yield* _(schemaManager.validateSchema("abcd-1234"))
+      const program = Effect.gen(function*() {
+        const schemaManager = yield* SchemaManager
+        return yield* schemaManager.validateSchema("abcd-1234")
       })
 
       const runnable = Effect.provide(program, schemaManagerLayer).pipe(
@@ -185,9 +185,9 @@ describe("SchemaManager", () => {
       const dbError = new Error("Database connection failed")
       mockSql.mockReturnValue(Effect.fail(dbError))
 
-      const program = Effect.gen(function*(_) {
-        const schemaManager = yield* _(SchemaManager)
-        return yield* _(schemaManager.validateSchema("abcd-1234"))
+      const program = Effect.gen(function*() {
+        const schemaManager = yield* SchemaManager
+        return yield* schemaManager.validateSchema("abcd-1234")
       })
 
       const runnable = Effect.provide(program, schemaManagerLayer).pipe(
@@ -205,10 +205,10 @@ describe("SchemaManager", () => {
 
       mockSql.mockReturnValue(Effect.succeed([]))
 
-      const program = Effect.gen(function*(_) {
-        const schemaManager = yield* _(SchemaManager)
-        yield* _(schemaManager.initializeSchema("abcd-1234"))
-        yield* _(schemaManager.initializeSchema("wxyz-5678"))
+      const program = Effect.gen(function*() {
+        const schemaManager = yield* SchemaManager
+        yield* schemaManager.initializeSchema("abcd-1234")
+        yield* schemaManager.initializeSchema("wxyz-5678")
       })
 
       const runnable = Effect.provide(program, schemaManagerLayer).pipe(
