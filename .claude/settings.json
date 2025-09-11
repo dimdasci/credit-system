@@ -18,5 +18,5 @@
     "deny": [],
     "ask": []
   },
-  "enabledMcpjsonServers": ["github"]
+  "enabledMcpjsonServers": []
 }
