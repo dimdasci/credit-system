@@ -1,4 +1,6 @@
 import { Schema } from "@effect/schema"
+import { Credits } from "@server/domain/shared/values/Credits.js"
+import { Option } from "effect"
 
 // Product distribution type enumeration
 export const ProductDistribution = Schema.Literal("sellable", "grant")
@@ -12,7 +14,7 @@ export class PriceRow extends Schema.Class<PriceRow>("PriceRow")({
   country: Schema.String, // ISO-3166-1 alpha-2 or "*" for fallback
   currency: Schema.String,
   amount: Schema.Number.pipe(Schema.positive()), // decimal(19,4)
-  vat_info: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })) // JSONB
+  vat_info: Schema.OptionFromNullOr(Schema.Record({ key: Schema.String, value: Schema.Unknown })) // JSONB
 }) {}
 
 export namespace PriceRow {
@@ -24,24 +26,24 @@ export namespace PriceRow {
 export class Product extends Schema.Class<Product>("Product")({
   product_code: Schema.String.pipe(Schema.minLength(1), Schema.maxLength(50)),
   title: Schema.String.pipe(Schema.minLength(1), Schema.maxLength(255)),
-  credits: Schema.Number.pipe(Schema.positive(), Schema.int()),
+  credits: Credits.pipe(Schema.greaterThan(0)),
   access_period_days: Schema.Number.pipe(Schema.positive(), Schema.int()),
   distribution: ProductDistribution,
-  grant_policy: Schema.optional(GrantPolicy),
+  grant_policy: Schema.OptionFromNullOr(GrantPolicy),
   // Lifecycle Management
   effective_at: Schema.Date,
-  archived_at: Schema.optional(Schema.Date),
+  archived_at: Schema.OptionFromNullOr(Schema.Date),
   // Related pricing (not stored in this table but related)
-  price_rows: Schema.optional(Schema.Array(PriceRow))
+  price_rows: Schema.OptionFromNullOr(Schema.Array(PriceRow))
 }) {
   // Business logic methods
   isActive(): boolean {
     const now = new Date()
-    return this.effective_at <= now && this.archived_at === undefined
+    return this.effective_at <= now && Option.isNone(this.archived_at)
   }
 
   isArchived(): boolean {
-    return this.archived_at !== undefined
+    return Option.isSome(this.archived_at)
   }
 
   isSellable(): boolean {
@@ -53,19 +55,20 @@ export class Product extends Schema.Class<Product>("Product")({
   }
 
   requiresGrantPolicy(): boolean {
-    return this.distribution === "grant" && this.grant_policy !== undefined
+    return this.distribution === "grant" && Option.isSome(this.grant_policy)
   }
 
   // Price resolution logic
   findPriceForCountry(country: string): PriceRow | undefined {
-    if (!this.price_rows) return undefined
+    if (Option.isNone(this.price_rows)) return undefined
+    const priceRows = (this.price_rows as any).value as Array<PriceRow>
 
     // Try country-specific first
-    const countrySpecific = this.price_rows.find((pr) => pr.country === country)
+    const countrySpecific = priceRows.find((pr) => pr.country === country)
     if (countrySpecific) return countrySpecific
 
     // Fall back to "*" if available
-    return this.price_rows.find((pr) => pr.country === "*")
+    return priceRows.find((pr) => pr.country === "*")
   }
 
   isAvailableInCountry(country: string): boolean {
@@ -77,3 +80,11 @@ export namespace Product {
   export type Encoded = Schema.Schema.Encoded<typeof Product>
   export type Context = Schema.Schema.Context<typeof Product>
 }
+
+// Schema-level invariant: grant requires grant_policy; sellable forbids it
+export const ProductValidated = Product.pipe(
+  Schema.filter((p) =>
+    ((p as any).distribution === "grant" && Option.isSome((p as any).grant_policy)) ||
+    ((p as any).distribution === "sellable" && Option.isNone((p as any).grant_policy))
+  )
+)

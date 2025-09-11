@@ -1,8 +1,8 @@
 import { SqlClient } from "@effect/sql"
+import { DatabaseManager, MissingMerchantDatabaseUrlError } from "@server/db/DatabaseManager.js"
+import { DatabaseManagerLive, PgLayerFactory } from "@server/db/DatabaseManagerImpl.js"
 import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect"
 import { describe, expect, it, vi } from "vitest"
-import { DatabaseManager, MissingMerchantDatabaseUrlError } from "../../src/db/DatabaseManager.js"
-import { DatabaseManagerLive, PgLayerFactory } from "../../src/db/DatabaseManagerImpl.js"
 
 const testConfigProvider = ConfigProvider.fromMap(
   new Map([

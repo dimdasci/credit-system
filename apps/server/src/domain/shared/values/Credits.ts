@@ -1,21 +1,20 @@
 import { Schema } from "@effect/schema"
 
-// Credits value object - integer credits for ledger amounts
+// Credits unit: branded non-zero integer used across domain
 export const Credits = Schema.Number.pipe(
   Schema.int(),
-  Schema.greaterThanOrEqualTo(0),
+  Schema.filter((n) => n !== 0),
   Schema.brand("Credits")
 )
 
 export type Credits = Schema.Schema.Type<typeof Credits>
 
 // Utility functions
-export const zero = (): Credits => 0 as Credits
+// Note: Credits is non-zero by design; return number for arithmetic that may be zero
+export const add = (a: Credits, b: Credits): number => (a as number) + (b as number)
 
-export const add = (a: Credits, b: Credits): Credits => ((a as number) + (b as number)) as Credits
+export const subtract = (a: Credits, b: Credits): number => (a as number) - (b as number)
 
-export const subtract = (a: Credits, b: Credits): Credits => ((a as number) - (b as number)) as Credits
+export const isPositive = (credits: Credits | number): boolean => (credits as number) > 0
 
-export const isPositive = (credits: Credits): boolean => (credits as number) > 0
-
-export const isZero = (credits: Credits): boolean => (credits as number) === 0
+export const isZero = (value: number): boolean => value === 0

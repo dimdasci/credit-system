@@ -1,4 +1,5 @@
 import { Schema } from "@effect/schema"
+import { Option } from "effect"
 
 // Operation type entity for rate management with sequential versioning
 export class OperationType extends Schema.Class<OperationType>("OperationType")({
@@ -8,16 +9,16 @@ export class OperationType extends Schema.Class<OperationType>("OperationType")(
   credits_per_unit: Schema.Number.pipe(Schema.positive()), // decimal(19,6)
   // Sequential Versioning
   effective_at: Schema.Date,
-  archived_at: Schema.optional(Schema.Date)
+  archived_at: Schema.OptionFromNullOr(Schema.Date)
 }) {
   // Business logic methods
   isActive(): boolean {
     const now = new Date()
-    return this.effective_at <= now && this.archived_at === undefined
+    return this.effective_at <= now && Option.isNone(this.archived_at)
   }
 
   isArchived(): boolean {
-    return this.archived_at !== undefined
+    return Option.isSome(this.archived_at)
   }
 
   calculateCredits(resourceAmount: number): number {

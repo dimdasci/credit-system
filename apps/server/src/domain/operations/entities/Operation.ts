@@ -1,5 +1,6 @@
 import { Schema } from "@effect/schema"
-import { UserId } from "../../shared/values/UserId.js"
+import { UserId } from "@server/domain/shared/values/UserId.js"
+import { Option } from "effect"
 
 // Operation status enumeration matching database constraints
 export const OperationStatus = Schema.Literal("open", "completed", "expired", "cancelled")
@@ -9,12 +10,12 @@ export class Operation extends Schema.Class<Operation>("Operation")({
   operation_id: Schema.UUID,
   user_id: UserId,
   operation_type_code: Schema.String, // References operation_types(operation_code)
-  workflow_id: Schema.optional(Schema.UUID),
+  workflow_id: Schema.OptionFromNullOr(Schema.String),
   captured_rate: Schema.Number.pipe(Schema.positive()), // decimal(19,6)
   status: OperationStatus,
   opened_at: Schema.Date,
   expires_at: Schema.Date,
-  closed_at: Schema.optional(Schema.Date)
+  closed_at: Schema.OptionFromNullOr(Schema.Date)
 }) {
   // Business logic methods
   isOpen(): boolean {
@@ -50,5 +51,10 @@ export const OpenOperation = Operation.pipe(
 )
 
 export const CompletedOperation = Operation.pipe(
-  Schema.filter((op): op is Operation => op.status === "completed" && op.closed_at !== undefined)
+  Schema.filter((op): op is Operation => op.status === "completed" && Option.isSome((op as any).closed_at))
+)
+
+// Schema-level invariant: expires_at must be strictly after opened_at
+export const OperationValidated = Operation.pipe(
+  Schema.filter((op) => (op as any).expires_at > (op as any).opened_at)
 )
