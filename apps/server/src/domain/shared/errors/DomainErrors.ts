@@ -9,7 +9,7 @@ export class ProductUnavailable extends Schema.TaggedError<ProductUnavailable>("
     country: Schema.optional(Schema.String),
     reason: Schema.Literal(
       "not_found",
-      "archived", 
+      "archived",
       "not_available_in_country",
       "pricing_changed"
     )
@@ -31,7 +31,7 @@ export class ProductUnavailable extends Schema.TaggedError<ProductUnavailable>("
   }
 }
 
-// 2. OperationUnavailable  
+// 2. OperationUnavailable
 // Business Scenario: User attempts to start an operation but service cannot accommodate the request right now
 export class OperationUnavailable extends Schema.TaggedError<OperationUnavailable>("OperationUnavailable")(
   "OperationUnavailable",
@@ -62,7 +62,7 @@ export class OperationUnavailable extends Schema.TaggedError<OperationUnavailabl
 // 3. InsufficientBalance
 // Business Scenario: User attempts to start an operation but doesn't have enough credits
 export class InsufficientBalance extends Schema.TaggedError<InsufficientBalance>("InsufficientBalance")(
-  "InsufficientBalance", 
+  "InsufficientBalance",
   {
     user_id: Schema.String,
     current_balance: Schema.Number,
@@ -91,7 +91,7 @@ export class DuplicateAdminAction extends Schema.TaggedError<DuplicateAdminActio
   {
     action_type: Schema.Literal(
       "grant",
-      "credit_adjustment", 
+      "credit_adjustment",
       "debit_adjustment",
       "product_creation",
       "refund",
@@ -102,7 +102,9 @@ export class DuplicateAdminAction extends Schema.TaggedError<DuplicateAdminActio
   }
 ) {
   toString(): string {
-    return `${this.action_type} was already completed at ${this.original_timestamp.toISOString()}${this.external_ref ? ` (ref: ${this.external_ref})` : ""}`
+    return `${this.action_type} was already completed at ${this.original_timestamp.toISOString()}${
+      this.external_ref ? ` (ref: ${this.external_ref})` : ""
+    }`
   }
 }
 
@@ -115,7 +117,7 @@ export class InvalidRequest extends Schema.TaggedError<InvalidRequest>("InvalidR
     reason: Schema.Literal(
       "resource_unit_mismatch",
       "invalid_amount",
-      "workflow_id_mismatch", 
+      "workflow_id_mismatch",
       "invalid_parameters",
       "format_violation"
     ),
@@ -125,7 +127,7 @@ export class InvalidRequest extends Schema.TaggedError<InvalidRequest>("InvalidR
   toString(): string {
     const fieldPrefix = this.field ? `${this.field}: ` : ""
     const detailsSuffix = this.details ? ` (${this.details})` : ""
-    
+
     switch (this.reason) {
       case "resource_unit_mismatch":
         return `${fieldPrefix}Resource unit does not match operation type specification${detailsSuffix}`
@@ -152,7 +154,7 @@ export class AuthorizationRequired extends Schema.TaggedError<AuthorizationRequi
     reason: Schema.Literal(
       "unauthorized_grant",
       "unauthorized_adjustment",
-      "unauthorized_refund", 
+      "unauthorized_refund",
       "unauthorized_catalog_change",
       "invalid_token",
       "expired_token"
@@ -198,7 +200,7 @@ export class ServiceUnavailable extends Schema.TaggedError<ServiceUnavailable>("
   toString(): string {
     const servicePrefix = this.service ? `${this.service}: ` : ""
     const retryInfo = this.retry_after_seconds ? ` Retry after ${this.retry_after_seconds} seconds.` : ""
-    
+
     switch (this.reason) {
       case "database_connection_failure":
         return `${servicePrefix}Database connection failed.${retryInfo}`
@@ -217,9 +219,9 @@ export class ServiceUnavailable extends Schema.TaggedError<ServiceUnavailable>("
 }
 
 // Union type for all domain errors
-export type DomainError = 
+export type DomainError =
   | ProductUnavailable
-  | OperationUnavailable  
+  | OperationUnavailable
   | InsufficientBalance
   | DuplicateAdminAction
   | InvalidRequest
