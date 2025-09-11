@@ -48,6 +48,20 @@ Key principles for code structure and separation of concerns:
 - **Monorepo Dependency Rules:** Guidelines for package dependencies to maintain a clean architecture.
 - **Effect Middleware & DI:** The correct patterns for applying middleware and providing services in Effect HTTP.
 
+### [Server Architecture Structure](./server_architecture_structure.md)
+Screaming architecture principles for server application structure:
+- **Business-Focused Organization** - Folder structure reflects domain concepts, not technical layers
+- **Domain Aggregates** - Clear boundaries for credit-ledger, operations, products, and receipts
+- **Clean Architecture** - Domain → Application → Infrastructure dependency flow
+- **Implementation Guidelines** - Entity design, service patterns, and repository interfaces
+- **Migration Strategy** - Refactoring from technical layers to business-focused structure
+
+**Key Benefits:**
+- Immediate clarity of system purpose through folder names
+- Domain logic encapsulated within server application boundary
+- Clean separation between business logic and technical concerns
+- Maintainable aggregate boundaries preventing cross-domain coupling
+
 
 ## Development Workflow Summary
 
