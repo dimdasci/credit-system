@@ -51,6 +51,7 @@
 - `user_id` (caller must be the user or admin)
 **Output (per lot):**
 - `lot_id`
+- `lot_created_month` (UTC month date; internal key for joins)
 - `product_code`
 - `issued_at`
 - `expires_at`
@@ -65,13 +66,17 @@
 
 ### 3.1 `GetLedgerHistory` (paginated)
 **Purpose:** Append‑only history of credit movements.
-**Inputs:** `{ cursor?, limit, reason_filter?, time_from?, time_to? }`
+**Inputs:** `{ cursor?, limit, reason_filter?, time_from?, time_to?, created_months? }`
+Notes:
+- `created_months` is an optional array of UTC month dates to enable partition pruning. If absent, the server derives months from `time_from/time_to`.
 **Output (per entry):**
 - `entry_id`
 - `created_at`
+- `created_month` (UTC month date; internal key for joins)
 - `amount_credits`
 - `reason`
 - `lot_id?`
+- `lot_month?` (UTC month date when present)
 - `source_units?`
 - `meta?`
 
@@ -96,6 +101,7 @@
 - `purchase`: `{ product_code, country, currency, amount }`
 - `external_ref`
 - `download_url`
+Internal joins use `(lot_id, lot_created_month)`.
 
 ### 4.2 `GetReceipt`
 **Purpose:** Retrieve a specific receipt.
@@ -164,6 +170,9 @@
 - `started_at`
 - `expires_at` (started_at + operation_timeout_minutes)
 - `time_remaining` (computed: expires_at - now, or 0 if expired)
+Implementation notes:
+- Operations table is not partitioned; a partial unique index enforces at most one open operation per user.
+- Closed operations are retained for a short TTL (e.g., 60 days) for ops metrics and then cleaned up.
 
 ### 7.2 `GetOperationMetrics`
 **Purpose:** Operation usage patterns and timeout analysis for merchant dashboard.
@@ -191,4 +200,3 @@
 - Currency conversion.
 - Promo logic beyond catalog.
 - Public unauthenticated access.
-

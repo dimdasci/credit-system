@@ -18,13 +18,14 @@ The Credit Management Service implements a **database-per-merchant** isolation s
 
 ```sql
 CREATE TABLE ledger_entries (
-    entry_id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    entry_id          uuid NOT NULL DEFAULT gen_random_uuid(),
     user_id           text NOT NULL,
     -- IMPORTANT: lot_id is a SELF-REFERENCE to ledger_entries(entry_id)
     -- There is NO separate "lots" table. A "lot" IS a credit ledger entry.
     -- For credit entries (amount > 0): lot_id = entry_id (self-reference)
     -- For debit entries (amount < 0): lot_id references the original credit entry
-    lot_id            uuid NOT NULL REFERENCES ledger_entries(entry_id) DEFERRABLE INITIALLY DEFERRED,
+    lot_id            uuid NOT NULL,
+    lot_month         date NOT NULL,
     amount            integer NOT NULL,
     reason            text NOT NULL CHECK (reason IN (
         'purchase', 'welcome', 'promo', 'adjustment', 
@@ -43,21 +44,15 @@ CREATE TABLE ledger_entries (
     
     -- Audit
     created_at        timestamptz NOT NULL DEFAULT now(),
-    
-    -- Partitioning column
-    created_month     date NOT NULL GENERATED ALWAYS AS 
-                      ((date_trunc('month', created_at))::date) STORED
-) PARTITION BY RANGE (created_month);
+    -- Explicit partition key (UTC month of created_at)
+    created_month     date NOT NULL,
+    -- Composite primary key includes partition key
+    PRIMARY KEY (entry_id, created_month)
+);
 
 -- Critical Financial Integrity Constraints
 ALTER TABLE ledger_entries ADD CONSTRAINT ledger_entries_amount_not_zero 
     CHECK (amount != 0);
-
-ALTER TABLE ledger_entries ADD CONSTRAINT ledger_entries_issuance_context
-    CHECK (
-        (amount > 0 AND product_code IS NOT NULL AND expires_at IS NOT NULL) OR
-        (amount <= 0 AND product_code IS NULL AND expires_at IS NULL)
-    );
 ```
 
 **Design Principles:**
@@ -65,7 +60,7 @@ ALTER TABLE ledger_entries ADD CONSTRAINT ledger_entries_issuance_context
 - **Lot = Initial Credit Entry**: The first credit entry's entry_id becomes the lot_id
 - **Self-Referential Integrity**: All entries reference their target lot via lot_id
 - **Credit Units as Integers**: Ledger amounts are integer credits; monetary values remain decimal elsewhere (prices, resource_amount)
-- **Generated Partitioning**: Automatic monthly partition assignment
+- **Explicit Partitioning**: Application computes `created_month = date_trunc('month', created_at at time zone 'UTC')::date` and writes it; a CHECK constraint enforces consistency.
 
 ```sql
 -- Enforce immutability: block UPDATE/DELETE on ledger_entries
@@ -84,8 +79,12 @@ CREATE TRIGGER ledger_entries_immutable
 CREATE OR REPLACE FUNCTION ledger_entries_set_lot_id()
 RETURNS trigger AS $$
 BEGIN
-    IF NEW.amount > 0 AND NEW.lot_id IS NULL THEN
-        NEW.lot_id := NEW.entry_id;
+    IF NEW.amount > 0 THEN
+        IF NEW.lot_id IS NULL THEN
+            NEW.lot_id := NEW.entry_id;
+        END IF;
+        -- Ensure lot_month equals the entry's created_month for issuance entries
+        NEW.lot_month := NEW.created_month;
     END IF;
     RETURN NEW;
 END;
@@ -94,6 +93,35 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER ledger_entries_set_lot_id_trigger
     BEFORE INSERT ON ledger_entries
     FOR EACH ROW EXECUTE FUNCTION ledger_entries_set_lot_id();
+
+-- Ensure created_month matches created_at (UTC)
+ALTER TABLE ledger_entries
+ADD CONSTRAINT ledger_entries_created_month_check
+CHECK (
+  created_month = (date_trunc('month', created_at AT TIME ZONE 'UTC'))::date
+);
+
+-- Self-reference across partitions using composite identity
+ALTER TABLE ledger_entries
+ADD CONSTRAINT ledger_entries_lot_fk
+FOREIGN KEY (lot_id, lot_month) REFERENCES ledger_entries(entry_id, created_month)
+DEFERRABLE INITIALLY DEFERRED;
+
+-- Enforce issuance/debit context and composite identity rules
+ALTER TABLE ledger_entries
+ADD CONSTRAINT ledger_entries_role_context CHECK (
+  (
+    amount > 0 AND 
+    product_code IS NOT NULL AND 
+    expires_at IS NOT NULL AND 
+    lot_id = entry_id AND 
+    lot_month = created_month
+  ) OR (
+    amount <= 0 AND 
+    product_code IS NULL AND 
+    expires_at IS NULL
+  )
+);
 ```
 
 #### products (Product Catalog Template)
@@ -159,33 +187,30 @@ CREATE TABLE price_rows (
 Note: Pricing fallback behavior
 - Fallback pricing (country = "*") is optional. The application resolves prices by first trying a country-specific row, then falling back to "*" if present. If neither exists, the product is treated as unavailable for that country and the purchase is rejected.
 
-#### operations (Two-Phase Resource Tracking)
+#### operations (Open Operation Guard & Audit Snapshot)
 
 ```sql
 CREATE TABLE operations (
-    operation_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id            text NOT NULL,
+    operation_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             text NOT NULL,
     operation_type_code text NOT NULL REFERENCES operation_types(operation_code),
-    workflow_id        text,
-    captured_rate      decimal(19,6) NOT NULL CHECK (captured_rate > 0),
-    status             text NOT NULL CHECK (status IN ('open', 'completed', 'expired', 'cancelled')),
-    
-    -- Timing
-    opened_at          timestamptz NOT NULL DEFAULT now(),
-    expires_at         timestamptz NOT NULL,
-    
-    -- Partitioning
-    opened_month       date NOT NULL GENERATED ALWAYS AS 
-                       ((date_trunc('month', opened_at))::date) STORED,
-    
-    -- Business Rules
+    workflow_id         text,
+    captured_rate       decimal(19,6) NOT NULL CHECK (captured_rate > 0),
+    status              text NOT NULL CHECK (status IN ('open', 'completed', 'expired', 'cancelled')),
+    opened_at           timestamptz NOT NULL DEFAULT now(),
+    expires_at          timestamptz NOT NULL,
+    closed_at           timestamptz,
     CONSTRAINT operations_expiry_after_open CHECK (expires_at > opened_at)
-) PARTITION BY RANGE (opened_month);
+);
 
--- Prevent multiple open operations per user
-CREATE UNIQUE INDEX operations_single_open_per_user 
+-- Enforce at most one open operation per user globally (partial unique index)
+CREATE UNIQUE INDEX IF NOT EXISTS operations_single_open_per_user 
     ON operations (user_id) 
     WHERE status = 'open';
+
+-- Indexes to support cleanup and expiry scanning
+CREATE INDEX IF NOT EXISTS operations_open_by_expiry_idx ON operations (expires_at) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS operations_cleanup_idx ON operations (COALESCE(closed_at, opened_at)) WHERE status <> 'open';
 ```
 
 #### operation_types (Rate Management)
@@ -282,20 +307,18 @@ CREATE TRIGGER idempotency_touch_updated_at_trigger
 CREATE TABLE receipts (
     receipt_id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id            text NOT NULL,
-    lot_id             uuid NOT NULL REFERENCES ledger_entries(entry_id),
+    lot_id             uuid NOT NULL,
+    lot_created_month  date NOT NULL,
     receipt_number     text NOT NULL UNIQUE DEFAULT generate_receipt_number(), -- "R-ACME-2025-0001"
     issued_at          timestamptz NOT NULL DEFAULT now(),
-    
-    -- Partitioning
-    issued_year        date NOT NULL GENERATED ALWAYS AS ((date_trunc('year', issued_at))::date) STORED,
-    
     -- Immutable Snapshots
     purchase_snapshot  jsonb NOT NULL,
     merchant_config_snapshot  jsonb NOT NULL,
-    
     -- Enforce one receipt per lot
-    UNIQUE (lot_id)
-) PARTITION BY RANGE (issued_year);
+    UNIQUE (lot_id),
+    -- Composite FK to partitioned ledger identity
+    FOREIGN KEY (lot_id, lot_created_month) REFERENCES ledger_entries(entry_id, created_month)
+);
 
 -- Sequential receipt numbering per merchant
 CREATE SEQUENCE receipt_number_seq;
@@ -313,7 +336,7 @@ $$ LANGUAGE plpgsql;
 ```
 
 Note: Audit Retention
-- `ledger_entries` and `operations` are audit-critical and must never be dropped. Partitioning exists for performance and maintenance only. Long-term retention is achieved via per-merchant backups and point-in-time recovery.
+- `ledger_entries` is audit-critical and must never be dropped. Partitioning exists for performance and maintenance only. Long-term retention is achieved via per-merchant backups and point-in-time recovery.
 
 #### user_balance (Performance Cache)
 
@@ -322,20 +345,24 @@ CREATE TABLE user_balance (
     user_id            text PRIMARY KEY,
     balance            integer NOT NULL DEFAULT 0,
     last_updated       timestamptz NOT NULL DEFAULT now(),
-    last_entry_id      uuid NOT NULL REFERENCES ledger_entries(entry_id)
+    last_entry_id      uuid NOT NULL,
+    last_entry_month   date NOT NULL,
+    CONSTRAINT user_balance_last_entry_fk FOREIGN KEY (last_entry_id, last_entry_month)
+      REFERENCES ledger_entries(entry_id, created_month)
 );
 
 -- Ensure balance accuracy with trigger
 CREATE OR REPLACE FUNCTION update_user_balance()
 RETURNS trigger AS $$
 BEGIN
-    INSERT INTO user_balance (user_id, balance, last_entry_id)
-    VALUES (NEW.user_id, NEW.amount, NEW.entry_id)
+    INSERT INTO user_balance (user_id, balance, last_entry_id, last_entry_month)
+    VALUES (NEW.user_id, NEW.amount, NEW.entry_id, NEW.created_month)
     ON CONFLICT (user_id) 
     DO UPDATE SET 
         balance = user_balance.balance + NEW.amount,
         last_updated = now(),
-        last_entry_id = NEW.entry_id;
+        last_entry_id = NEW.entry_id,
+        last_entry_month = NEW.created_month;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -349,7 +376,7 @@ CREATE TRIGGER update_user_balance_trigger
 
 #### Monthly Partition Design
 
-**High-Volume Tables**: `ledger_entries` and `operations` use monthly range partitioning for optimal performance and maintenance.
+**High-Volume Tables**: Only `ledger_entries` uses monthly range partitioning via explicit `created_month` column and composite PK `(entry_id, created_month)`. `operations` remains unpartitioned with a partial unique index for open‑operation exclusivity and a short retention policy for closed rows.
 
 ```sql
 -- Automated Monthly Partition Creation
@@ -375,17 +402,16 @@ BEGIN
             partition_name, table_name, start_date, end_date
         );
         
-        -- Create partition-specific indexes
+        -- Create partition-specific indexes for ledger pruning
         IF table_name = 'ledger_entries' THEN
-            EXECUTE format(
-                'CREATE INDEX IF NOT EXISTS %I ON %I (user_id, created_at)',
-                partition_name || '_user_time_idx', partition_name
-            );
-        ELSIF table_name = 'operations' THEN
-            EXECUTE format(
-                'CREATE INDEX IF NOT EXISTS %I ON %I (user_id, opened_at)',
-                partition_name || '_user_time_idx', partition_name
-            );
+          EXECUTE format(
+            'CREATE INDEX IF NOT EXISTS %I ON %I (user_id, expires_at, created_at) WHERE amount > 0',
+            partition_name || '_fifo_idx', partition_name
+          );
+          EXECUTE format(
+            'CREATE INDEX IF NOT EXISTS %I ON %I (user_id, created_at DESC)',
+            partition_name || '_balance_idx', partition_name
+          );
         END IF;
     END LOOP;
 END;
@@ -393,55 +419,13 @@ $$ LANGUAGE plpgsql;
 
 -- Initialize partitions for current and future months
 SELECT create_monthly_partitions('ledger_entries', 6);
-SELECT create_monthly_partitions('operations', 6);
-```
-
-#### Yearly Partition Design
-
-```sql
--- Automated Yearly Partition Creation for receipts
-CREATE OR REPLACE FUNCTION create_yearly_partitions(
-    table_name text,
-    years_ahead integer DEFAULT 2
-) RETURNS void AS $$
-DECLARE
-    partition_date date;
-    partition_name text;
-    start_date text;
-    end_date text;
-BEGIN
-    FOR i IN 0..years_ahead LOOP
-        partition_date := date_trunc('year', now()) + (i || ' years')::interval;
-        partition_name := table_name || '_' || to_char(partition_date, 'YYYY');
-        start_date := partition_date::text;
-        end_date := (partition_date + interval '1 year')::text;
-        
-        EXECUTE format(
-            'CREATE TABLE IF NOT EXISTS %I PARTITION OF %I 
-             FOR VALUES FROM (%L) TO (%L)',
-            partition_name, table_name, start_date, end_date
-        );
-        
-        -- Create partition-specific indexes
-        IF table_name = 'receipts' THEN
-            EXECUTE format(
-                'CREATE INDEX IF NOT EXISTS %I ON %I (user_id, issued_at DESC)',
-                partition_name || '_user_time_idx', partition_name
-            );
-        END IF;
-    END LOOP;
-END;
-$$ LANGUAGE plpgsql;
-
--- Initialize receipts partitions for current and future years
-SELECT create_yearly_partitions('receipts', 2);
 ```
 
 #### Partition Maintenance Strategy
 
 ```sql
--- Partition cleanup disabled for audit tables (ledger_entries, operations)
--- Retention for these tables is handled via backups/archival policies; do not drop partitions.
+-- Partition cleanup disabled for audit table (ledger_entries)
+-- Retention is handled via backups/archival policies; do not drop partitions.
 CREATE OR REPLACE FUNCTION cleanup_old_partitions_audit_safe(
     table_name text,
     retention_months integer DEFAULT 24
@@ -457,7 +441,7 @@ BEGIN
           AND schemaname = current_schema()
     LOOP
         IF to_date(substring(partition_record.tablename from '(\d{4}_\d{2})$'), 'YYYY_MM') < cutoff_date THEN
-            -- Disabled: Do not drop partitions for audit tables (ledger_entries, operations)
+            -- Disabled: Do not drop partitions for audit table (ledger_entries)
             RAISE NOTICE 'Skipping partition drop for %.% due to audit retention policy',
                          partition_record.schemaname,
                          partition_record.tablename;
@@ -635,14 +619,12 @@ CREATE SCHEMA IF NOT EXISTS app;
 ```sql
 -- Initialize monthly partitions for high-volume tables
 SELECT create_monthly_partitions('ledger_entries', 6);
-SELECT create_monthly_partitions('operations', 6);
 
 -- Schedule automatic partition creation
 SELECT cron.schedule(
   'create_future_partitions',
   '0 0 1 * *', -- First day of each month
-  $$SELECT create_monthly_partitions('ledger_entries', 3);
-    SELECT create_monthly_partitions('operations', 3);$$
+  $$SELECT create_monthly_partitions('ledger_entries', 3);$$
 );
 ```
 
@@ -752,9 +734,10 @@ erDiagram
     }
     
     ledger_entries {
-        uuid entry_id PK
+        uuid entry_id PK "composite with created_month"
         string user_id
-        uuid lot_id FK "self-reference to entry_id (NO lots table)"
+        uuid lot_id FK "self-reference to (entry_id, created_month)"
+        date lot_month
         decimal amount "positive=credit, negative=debit"
         string reason "purchase|welcome|promo|adjustment|debit|expiry|refund|chargeback"
         string operation_type
@@ -776,7 +759,7 @@ erDiagram
         string status "open|completed|expired|cancelled"
         timestamptz opened_at
         timestamptz expires_at
-        date opened_month "partition key"
+        timestamptz closed_at "nullable"
     }
     
     operation_types {
@@ -792,6 +775,7 @@ erDiagram
         uuid receipt_id PK
         string user_id
         uuid lot_id FK
+        date lot_created_month
         string receipt_number UK "R-ACME-2025-0001"
         timestamptz issued_at
         jsonb purchase_snapshot
@@ -827,13 +811,11 @@ erDiagram
 
     %% Partitioning indicators
     ledger_entries ||--|| ledger_entries : "PARTITIONED BY created_month"
-    operations ||--|| operations : "PARTITIONED BY opened_month"
-    receipts ||--|| receipts : "PARTITIONED BY issued_year"
 ```
 
 **Schema Design Principles:**
 - **Lot = Initial Credit Entry**: No separate lot table; ledger is source of truth
-- **Monthly Partitioning**: `ledger_entries` and `operations` partitioned by date
+- **Monthly Partitioning**: `ledger_entries` partitioned by month (explicit key)
 - **Financial Integrity**: Decimal precision, immutable entries, comprehensive constraints
 - **Multi-Tenant Isolation**: Each merchant has separate database with identical schema
 - **Performance Optimization**: Strategic indexes for FIFO, balance calculation, and cleanup operations
