@@ -38,3 +38,7 @@ Default assumption: Tasks are done when they work as specified and tests pass. D
 `pnpm run dev` run from project root to start server in the development mode
 
 Avoid running plain tsc or editor “TypeScript: Compile” actions that don’t honor your build tsconfigs.
+
+## Local database
+
+Use connection string from MERCHANT_9327_DATABASE_URL environment variable to connect to the local database.
