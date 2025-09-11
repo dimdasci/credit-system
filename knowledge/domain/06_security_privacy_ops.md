@@ -52,7 +52,8 @@
 
 ## Ops & Runbooks
 - **Expiry Job:** Nightly per merchant.
-- **Partition Job:** Monthly, per merchant ledger.
+- **Ledger Partition Job:** Monthly, per merchant ledger (create next N monthly partitions for `ledger_entries`).
+- **Operations Cleanup:** Daily deletion of non-open operations older than retention window (e.g., 60 days).
 - **Idempotency Cleanup:** Daily cleanup of idempotency tracking data older than 7 days per merchant.
 - **Webhook Replay:** Upstream can resend settlement events with same idempotency key within 7-day window.
 - **Receipt Re‑send:** Merchant support can trigger re‑email; same receipt number.

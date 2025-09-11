@@ -85,7 +85,7 @@ Entity: LedgerEntry (immutable movement record)
   Movement: amount (positive = credit, negative = debit), reason
   Operation: operation_type, resource_amount, resource_unit, workflow_id
   Issuance Context?: product_code?, expires_at? (set on issuance entries only)
-  Audit: created_at (movement timestamp)
+  Audit: created_at (movement timestamp), created_month (UTC month for partitioning)
 ```
 
 **Business Rules:**
@@ -93,8 +93,10 @@ Entity: LedgerEntry (immutable movement record)
 - The initial credit LedgerEntry plays the "lot" role; subsequent debits reference its entry_id via lot_id
 - Operations create debit LedgerEntries targeting specific lots via FIFO algorithm
 - Every LedgerEntry must reference a lot_id (where the movement is applied)
+ - Partitioning: created_month = date_trunc('month', created_at at UTC) is computed on write and used as the partition key
+ - Self-reference uses composite identity: debits carry lot_month and reference (lot_id, lot_month)
 
-#### Operation Entity
+#### Operation Entity (Open-Operation Guard)
 ```
 Entity: Operation (operation reservation and rate capture)
   Identifier: operation_id (unique within system)
@@ -103,21 +105,22 @@ Entity: Operation (operation reservation and rate capture)
   Workflow: workflow_id? (optional external process correlation)
   Billing: captured_rate (rate stability from Operation.Open time)
   Status: status ("open" | "completed" | "expired")
-  Lifecycle: opened_at, expires_at (opened_at + merchant.operation_timeout_minutes)
+  Lifecycle: opened_at, expires_at (opened_at + merchant.operation_timeout_minutes), closed_at?
 ```
 
 **Business Rules:**
 - Two-phase protocol: Operation.Open (reservation) → Operation.RecordAndClose (consumption)
-- Single open operation per (merchant, user_id) prevents race conditions
+- Single open operation per (merchant, user_id) is enforced by a partial unique index on the unpartitioned operations table: UNIQUE(user_id) WHERE status='open'
 - Rate captured during Open time ensures billing stability
 - Operations expire after merchant-configured timeout period
 - Actual consumption data (resource_amount, resource_unit) stored in resulting LedgerEntry
+ - Closed operations are retained for a short TTL window for metrics and then cleaned up by ops jobs
 
 #### Receipt Entity
 ```
 Entity: Receipt (immutable purchase documentation)
   Identifier: receipt_id (unique within system)
-  Context: user_id, lot_id (links to credit lot)
+  Context: user_id, lot_id, lot_created_month (links to credit lot composite identity)
   Numbering: receipt_number (merchant-scoped sequence: "R-AM-2025-0001")
   Issued: issued_at (receipt generation timestamp)
   Purchase: purchase_snapshot (immutable transaction details)
@@ -235,8 +238,8 @@ Repositories provide data access interfaces for domain entities with clear contr
 ```
 Repository: LedgerRepository (immutable ledger entry management)
   Operations:
-    createLedgerEntry(entry) -> void
-    getLedgerHistory(user_id, options?) -> LedgerEntry[]
+    createLedgerEntry(entry) -> void  // entry includes created_month (UTC)
+    getLedgerHistory(user_id, options?) -> LedgerEntry[]  // server derives month pruning from time range
     getUserBalance(user_id) -> Credits
     getActiveLots(user_id) -> Lot[]  // aggregated view over issuance entries (initial credit entries)
 

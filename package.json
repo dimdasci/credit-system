@@ -21,7 +21,9 @@
     "coverage": "vitest --coverage",
     "dev": "cd apps/server && pnpm run dev",
     "cli": "node apps/cli/build/esm/bin.js",
-    "start:server": "cd apps/server/build && node esm/server.js"
+    "start:server": "cd apps/server/build && node esm/server.js",
+    "db:init": "bash scripts/init-merchant-db.sh",
+    "db:init:help": "bash scripts/init-merchant-db.sh --help"
   },
   "devDependencies": {
     "@babel/cli": "^7.25.9",

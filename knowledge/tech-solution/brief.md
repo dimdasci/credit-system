@@ -4,15 +4,17 @@ The document provided essential information for technical solution design and im
 
 ## Architecture Decision
 
-**Confirmed Approach: Simple Append-Only Ledger**
+**Confirmed Approach: Append-Only Ledger + Lean Ops Guard**
 
 Based on domain requirements analysis, the system architecture is clearly defined:
 
-- **Core Structure**: Single `ledger_entries` table with all credit movements
+- **Core Structure**: `ledger_entries` as the immutable source of truth (append-only)
 - **Immutability**: Enforced at database level, corrections via compensating entries only
 - **Balance Calculation**: `SUM(amount)` from all ledger entries
 - **Multi-tenant Isolation**: Separate database per merchant (complete data isolation)
 - **Audit Trail**: Every entry includes complete operation context (operation_type, resource_amount, resource_unit, workflow_id)
+ - **Partitioning**: `ledger_entries` partitioned by month using explicit `created_month` column and composite keys
+ - **Operations**: Unpartitioned table with partial unique index enforcing at most one open operation per user; closed rows retained with a short TTL and cleaned up
 
 The domain requirements explicitly describe an append-only ledger system, aligning with the "lean focused system" design philosophy that prioritizes simplicity over complexity.
 
@@ -204,9 +206,9 @@ credit-cli adjustment apply --merchant=acme --user=user123 --amount=50 --reason=
 
 ### 4. Operation Lifecycle Management ✅
 
-**Decision: Database-Based Timeout with Status Management**
+**Decision: Unpartitioned Operations with Partial Unique + TTL Cleanup**
 
-**Core Principle**: Never delete financial records, only transition states to preserve complete audit trail.
+**Core Principle**: Financial records live in the ledger (never deleted). Operations are coordination artifacts: enforce exclusivity and store rate snapshots; closed operations may be deleted after a short retention.
 
 **Operation State Machine**:
 - `open` → `completed` (via Operation.RecordAndClose)
@@ -216,21 +218,26 @@ credit-cli adjustment apply --merchant=acme --user=user123 --amount=50 --reason=
 **Background Job Implementation**:
 ```sql
 -- Safe cleanup: mark as expired, never delete
+-- Mark expired
 UPDATE operations 
-SET status = 'expired', expired_at = NOW() 
+SET status = 'expired', closed_at = NOW() 
 WHERE status = 'open' AND expires_at < NOW();
+
+-- TTL cleanup of non-open operations
+DELETE FROM operations
+WHERE status <> 'open' AND COALESCE(closed_at, opened_at) < NOW() - INTERVAL '60 days';
 ```
 
 **Safety Guarantees**:
-- **Audit Trail Preservation**: All operation records retained forever for regulatory compliance
-- **Double Execution Prevention**: Expired operations rejected by Operation.RecordAndClose
-- **Rate Capture Integrity**: Original operation context preserved for investigation
+- **Audit Trail Preservation**: Financial audit lives in the immutable ledger; operations are ephemeral coordination records
+- **Double Execution Prevention**: Partial unique `UNIQUE(user_id) WHERE status='open'` ensures one open per user
+- **Rate Capture Integrity**: Captured rate stored on operation and copied to the debit entry if needed
 - **Clear Error Messaging**: Clients receive specific "operation expired" responses
 
 **Multi-Tenant Implementation**:
-- Background job runs per merchant database (merchant isolation)
-- Merchant-configurable timeout settings (default: 15 minutes)
-- Independent cleanup scheduling per merchant
+- Background jobs run per merchant database (merchant isolation)
+- Merchant-configurable timeout settings (default: 15 minutes) and operations retention window (e.g., 60 days)
+- Independent partition creation for `ledger_entries` only
 
 **Validation Rules**:
 - Operation.RecordAndClose only accepts `status = 'open'` operations
