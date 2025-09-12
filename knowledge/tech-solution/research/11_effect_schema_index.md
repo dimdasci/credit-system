@@ -214,7 +214,7 @@ it("validates product creation", () => {
 6. **[Transformations](https://effect.website/docs/schema/transformations/)** - External system integration
 
 ### Migration Checklist
-- [ ] Update imports from `@effect/schema` to `effect` 
+- [x] Update imports from `@effect/schema` to `effect` ✅ Completed 
 - [ ] Add custom error messages for better validation feedback
 - [ ] Consider more branded types for type safety
 - [ ] Add transformation schemas for database/API integration
