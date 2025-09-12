@@ -1,11 +1,11 @@
 import { Schema } from "@effect/schema"
-import { Effect } from "effect"
-import { describe, expect, it } from "vitest"
+import { describe, it } from "vitest"
 
 import { LedgerEntryValidated } from "@server/domain/credit-ledger/entities/LedgerEntry.js"
 import { OperationValidated } from "@server/domain/operations/entities/Operation.js"
 import { ProductValidated } from "@server/domain/products/entities/Product.js"
 import { createMonthDate } from "@server/domain/shared/values/MonthDate.js"
+import { expectLeft, expectRight, runTestEffect } from "../utils/effect-helpers.js"
 
 describe("Domain invariants", () => {
   describe("LedgerEntry issuance/debit rules", () => {
@@ -31,9 +31,8 @@ describe("Domain invariants", () => {
         created_month: createdMonth
       }
 
-      const result = Effect.runSync(Effect.either(Schema.decodeUnknown(LedgerEntryValidated)(input)))
-      if (result._tag === "Left") console.error("Issuance decode error:", String(result.left))
-      expect(result._tag).toBe("Right")
+      const result = runTestEffect(Schema.decodeUnknown(LedgerEntryValidated)(input))
+      expectRight(result)
     })
 
     it("rejects issuance missing product_code or expires_at", () => {
@@ -60,10 +59,10 @@ describe("Domain invariants", () => {
         expires_at: undefined
       }
 
-      const res1 = Effect.runSync(Effect.either(Schema.decodeUnknown(LedgerEntryValidated)(missingProduct)))
-      const res2 = Effect.runSync(Effect.either(Schema.decodeUnknown(LedgerEntryValidated)(missingExpiry)))
-      expect(res1._tag).toBe("Left")
-      expect(res2._tag).toBe("Left")
+      const res1 = runTestEffect(Schema.decodeUnknown(LedgerEntryValidated)(missingProduct))
+      const res2 = runTestEffect(Schema.decodeUnknown(LedgerEntryValidated)(missingExpiry))
+      expectLeft(res1)
+      expectLeft(res2)
     })
 
     it("rejects issuance when lot_id != entry_id or lot_month != created_month", () => {
@@ -91,10 +90,10 @@ describe("Domain invariants", () => {
         lot_month: "2025-04-01"
       }
 
-      const res3 = Effect.runSync(Effect.either(Schema.decodeUnknown(LedgerEntryValidated)(badIdentity)))
-      const res4 = Effect.runSync(Effect.either(Schema.decodeUnknown(LedgerEntryValidated)(badLotMonth)))
-      expect(res3._tag).toBe("Left")
-      expect(res4._tag).toBe("Left")
+      const res3 = runTestEffect(Schema.decodeUnknown(LedgerEntryValidated)(badIdentity))
+      const res4 = runTestEffect(Schema.decodeUnknown(LedgerEntryValidated)(badLotMonth))
+      expectLeft(res3)
+      expectLeft(res4)
     })
 
     it("accepts a valid debit (amount < 0) with product_code/expires_at absent", () => {
@@ -119,9 +118,8 @@ describe("Domain invariants", () => {
         created_month: createdMonth
       }
 
-      const result = Effect.runSync(Effect.either(Schema.decodeUnknown(LedgerEntryValidated)(input)))
-      if (result._tag === "Left") console.error("Debit decode error:", String(result.left))
-      expect(result._tag).toBe("Right")
+      const result = runTestEffect(Schema.decodeUnknown(LedgerEntryValidated)(input))
+      expectRight(result)
     })
 
     it("rejects a debit when product_code/expires_at are present", () => {
@@ -142,8 +140,8 @@ describe("Domain invariants", () => {
         created_month: createdMonth
       }
 
-      const res5 = Effect.runSync(Effect.either(Schema.decodeUnknown(LedgerEntryValidated)(invalidDebit)))
-      expect(res5._tag).toBe("Left")
+      const res5 = runTestEffect(Schema.decodeUnknown(LedgerEntryValidated)(invalidDebit))
+      expectLeft(res5)
     })
   })
 
@@ -160,9 +158,8 @@ describe("Domain invariants", () => {
         workflow_id: null,
         closed_at: null
       }
-      const result = Effect.runSync(Effect.either(Schema.decodeUnknown(OperationValidated)(input)))
-      if (result._tag === "Left") console.error("Operation decode error:", String(result.left))
-      expect(result._tag).toBe("Right")
+      const result = runTestEffect(Schema.decodeUnknown(OperationValidated)(input))
+      expectRight(result)
     })
 
     it("rejects expires_at <= opened_at", () => {
@@ -175,8 +172,8 @@ describe("Domain invariants", () => {
         opened_at: "2025-01-02T00:00:00.000Z",
         expires_at: "2025-01-02T00:00:00.000Z"
       }
-      const res6 = Effect.runSync(Effect.either(Schema.decodeUnknown(OperationValidated)(invalid)))
-      expect(res6._tag).toBe("Left")
+      const res6 = runTestEffect(Schema.decodeUnknown(OperationValidated)(invalid))
+      expectLeft(res6)
     })
   })
 
@@ -193,9 +190,8 @@ describe("Domain invariants", () => {
         archived_at: null,
         price_rows: null
       }
-      const result = Effect.runSync(Effect.either(Schema.decodeUnknown(ProductValidated)(input)))
-      if (result._tag === "Left") console.error("Product decode error:", String(result.left))
-      expect(result._tag).toBe("Right")
+      const result = runTestEffect(Schema.decodeUnknown(ProductValidated)(input))
+      expectRight(result)
     })
 
     it("rejects grant distribution without grant_policy", () => {
@@ -209,8 +205,8 @@ describe("Domain invariants", () => {
         archived_at: null,
         price_rows: null
       }
-      const res7 = Effect.runSync(Effect.either(Schema.decodeUnknown(ProductValidated)(invalid)))
-      expect(res7._tag).toBe("Left")
+      const res7 = runTestEffect(Schema.decodeUnknown(ProductValidated)(invalid))
+      expectLeft(res7)
     })
 
     it("rejects sellable distribution with grant_policy present", () => {
@@ -225,8 +221,8 @@ describe("Domain invariants", () => {
         archived_at: null,
         price_rows: null
       }
-      const res8 = Effect.runSync(Effect.either(Schema.decodeUnknown(ProductValidated)(invalid)))
-      expect(res8._tag).toBe("Left")
+      const res8 = runTestEffect(Schema.decodeUnknown(ProductValidated)(invalid))
+      expectLeft(res8)
     })
   })
 })
