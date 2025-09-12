@@ -147,3 +147,187 @@ When refactoring existing layer-based code:
 5. **Create Use Cases**: Orchestration logic goes to application layer
 
 This structure ensures the codebase clearly communicates its business purpose while maintaining clean separation of concerns.
+
+## Testing Structure
+
+### Purpose
+
+Define testing organization that mirrors the screaming architecture structure, ensuring tests reflect business domain concepts while maintaining proper separation of concerns and test types.
+
+### Testing Principles
+
+1. **Domain-First Testing**: Test structure reflects business aggregates, not technical layers
+2. **Layer-Specific Testing**: Each architectural layer has appropriate test types  
+3. **Effect-Based Testing**: All tests use Effect framework patterns for composition and error handling
+4. **Business-Focused Assertions**: Test business rules and domain invariants, not implementation details
+
+### Test Directory Structure
+
+```
+apps/server/test/
+├── domain/                                    # Pure business logic tests
+│   ├── invariants.test.ts                    # Domain entity schema validation
+│   ├── credit-ledger/
+│   │   ├── entities/                          # Entity business logic tests
+│   │   │   ├── LedgerEntry.test.ts
+│   │   │   └── Lot.test.ts
+│   │   └── repositories/                      # Repository interface contracts
+│   │       └── LedgerRepository.contract.test.ts
+│   ├── operations/
+│   │   ├── entities/
+│   │   │   ├── Operation.test.ts
+│   │   │   └── OperationType.test.ts
+│   │   └── repositories/
+│   │       └── OperationRepository.contract.test.ts
+│   ├── products/
+│   │   ├── entities/
+│   │   │   └── Product.test.ts
+│   │   └── repositories/
+│   │       └── ProductRepository.contract.test.ts
+│   ├── receipts/
+│   │   ├── entities/
+│   │   │   └── Receipt.test.ts
+│   │   └── repositories/
+│   │       └── ReceiptRepository.contract.test.ts
+│   └── shared/
+│       ├── values/                            # Value object tests
+│       │   ├── Credits.test.ts
+│       │   └── MonthDate.test.ts
+│       └── errors/                            # Domain error tests
+│           └── DomainErrors.test.ts
+│
+├── infrastructure/                            # Technical implementation tests
+│   ├── repositories/                          # Repository implementation tests
+│   │   ├── ProductRepositoryImpl.test.ts
+│   │   ├── LedgerRepositoryImpl.test.ts
+│   │   ├── OperationRepositoryImpl.test.ts
+│   │   ├── ReceiptRepositoryImpl.test.ts
+│   │   └── error-mapping.test.ts              # Infrastructure->Domain error mapping
+│   └── integration/                           # Cross-system integration tests
+│       ├── repository-isolation.test.ts       # Merchant isolation verification
+│       ├── transaction-boundaries.test.ts     # Database transaction tests
+│       └── database-constraints.test.ts       # Database constraint validation
+│
+├── fixtures/                                  # Shared test data
+│   ├── test-data.ts                           # Sample domain entities by aggregate
+│   ├── database-setup.ts                      # Test database configuration
+│   └── merchant-context.ts                    # Test MerchantContext implementations
+│
+└── utils/                                     # Test utilities
+    ├── effect-helpers.ts                      # Effect testing patterns and helpers
+    └── database-helpers.ts                    # Database testing utilities
+```
+
+### Test Categories by Layer
+
+#### Domain Layer Tests
+**Purpose**: Validate business logic and domain rules without infrastructure dependencies
+
+**Test Types**:
+- **Entity Invariant Tests**: Schema validation and business rule enforcement
+- **Repository Contract Tests**: Interface compliance and Effect type correctness
+- **Pure Function Tests**: Business algorithms and calculations
+- **Domain Error Tests**: Error type definitions and business context
+
+**Example Focus**:
+```typescript
+// Test business rules, not database operations
+describe("Product Entity Business Rules", () => {
+  it("grant products require grant_policy")
+  it("sellable products cannot have grant_policy") 
+  it("product pricing resolution follows country->fallback hierarchy")
+})
+```
+
+#### Infrastructure Layer Tests  
+**Purpose**: Validate technical implementations and external integrations
+
+**Test Types**:
+- **Repository Implementation Tests**: Database operations and query correctness
+- **Error Mapping Tests**: Infrastructure error translation to domain errors
+- **Integration Tests**: Database constraints, transactions, and isolation
+- **Performance Tests**: Query optimization and partition pruning
+
+**Example Focus**:
+```typescript
+// Test technical implementations
+describe("ProductRepositoryImpl", () => {
+  it("SQL queries respect merchant isolation via MerchantContext")
+  it("constraint violations map to ProductUnavailable errors")
+  it("archived products excluded from active product queries")
+})
+```
+
+### Repository Testing Guidelines
+
+#### Repository Interface Tests (Domain Layer)
+**Location**: `test/domain/{aggregate}/repositories/`
+**Focus**: Contract compliance and Effect composition
+
+```typescript
+describe("ProductRepository Contract", () => {
+  it("all methods return Effect with correct error types")
+  it("Context tag is properly defined for dependency injection")
+  it("method signatures match domain requirements")
+})
+```
+
+#### Repository Implementation Tests (Infrastructure Layer)  
+**Location**: `test/infrastructure/repositories/`
+**Focus**: Database operations and error handling
+
+```typescript
+describe("ProductRepositoryImpl", () => {
+  it("createProduct persists all fields correctly")
+  it("getActiveProducts filters by effective_at and archived_at") 
+  it("database errors map to appropriate domain error types")
+  it("MerchantContext isolation prevents cross-tenant data access")
+})
+```
+
+### Testing Standards
+
+#### Effect Testing Patterns
+All tests must use Effect framework patterns for consistency:
+
+```typescript
+import { Effect } from "effect"
+import { describe, expect, it } from "vitest"
+
+// Standard Effect testing pattern
+const testProgram = Effect.gen(function* () {
+  const repository = yield* ProductRepository
+  const result = yield* repository.getProductByCode("PROD_1")
+  return result
+})
+
+const result = Effect.runSync(Effect.either(testProgram))
+expect(result._tag).toBe("Right")
+```
+
+#### Test Data Management
+- **Fixtures**: Shared test data organized by business aggregate
+- **Database Setup**: Isolated test database per test suite
+- **MerchantContext**: Test implementations for multi-tenant isolation testing
+
+#### Error Testing Requirements
+Every repository test must verify:
+1. **Happy Path**: Successful operations return expected results
+2. **Business Errors**: Invalid operations return appropriate domain errors
+3. **Infrastructure Errors**: Database/connection issues map to ServiceUnavailable
+4. **Error Context**: Errors contain sufficient context for upstream handling
+
+### Integration with Continuous Integration
+
+#### Test Execution Phases
+1. **Unit Tests**: Domain layer tests (fastest, no external dependencies)
+2. **Integration Tests**: Infrastructure tests with test database
+3. **End-to-End Tests**: Full application flow tests (if applicable)
+
+#### Test Database Requirements
+- **Isolation**: Each test suite uses isolated database schema
+- **Cleanup**: Automatic cleanup after test execution
+- **Migration**: Test database matches production schema via migrations
+- **Partitions**: Test partition creation and pruning logic
+
+This testing structure ensures comprehensive coverage while maintaining the business-focused organization that makes the system's purpose immediately clear to developers.
