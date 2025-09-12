@@ -12,3 +12,6 @@ export * from "./operations/entities/index.js"
 
 // Products aggregate
 export * from "./products/entities/index.js"
+
+// Receipts aggregate
+export * from "./receipts/entities/index.js"

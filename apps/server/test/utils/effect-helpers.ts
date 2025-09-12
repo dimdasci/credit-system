@@ -3,8 +3,9 @@ import { Effect } from "effect"
 import { expect } from "vitest"
 
 // Run an Effect and capture Either result synchronously
-export const runTestEffect = <A, E>(effect: Effect.Effect<A, E>): Either.Either<A, E> => {
-  return Effect.runSync(Effect.either(effect)) as Either.Either<A, E>
+export const runTestEffect = <A, E, R>(effect: Effect.Effect<A, E, R>): Either.Either<A, E> => {
+  // For Schema effects with 'unknown' requirements, we can cast to never
+  return Effect.runSync(Effect.either(effect as Effect.Effect<A, E, never>)) as Either.Either<A, E>
 }
 
 // Assertion helpers for Effect results
@@ -19,9 +20,9 @@ export const expectLeft = <A, E>(result: Either.Either<A, E>): E => {
 }
 
 // Effect test wrapper that handles common patterns
-export const testEffect = <A, E>(
+export const testEffect = <A, E, R>(
   name: string,
-  effect: Effect.Effect<A, E>,
+  effect: Effect.Effect<A, E, R>,
   assertion: (result: Either.Either<A, E>) => void
 ) => {
   return it(name, () => {
