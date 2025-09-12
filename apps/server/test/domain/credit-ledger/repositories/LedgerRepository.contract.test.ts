@@ -1,7 +1,7 @@
 // Import only needed for interface reference
 // import { Effect } from "effect"
-import { describe, expect, it } from "vitest"
 import { LedgerRepository } from "@server/domain/credit-ledger/repositories/LedgerRepository.js"
+import { describe, expect, it } from "vitest"
 
 describe("LedgerRepository Contract", () => {
   describe("Interface Compliance", () => {

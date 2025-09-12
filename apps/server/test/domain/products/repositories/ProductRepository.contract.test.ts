@@ -1,7 +1,7 @@
 // Import only needed for interface reference
 // import { Effect } from "effect"
-import { describe, expect, it } from "vitest"
 import { ProductRepository } from "@server/domain/products/repositories/ProductRepository.js"
+import { describe, expect, it } from "vitest"
 
 describe("ProductRepository Contract", () => {
   describe("Interface Compliance", () => {
@@ -50,7 +50,7 @@ describe("ProductRepository Contract", () => {
     it("all methods return Effects with DomainError as error type", () => {
       // These tests ensure repository methods use proper domain errors
       // Actual error handling will be tested in infrastructure implementations
-      
+
       // This is validated at compile time through the interface definition
       expect(true).toBe(true)
     })
@@ -68,7 +68,7 @@ describe("ProductRepository Contract", () => {
     })
 
     it("getActiveProducts optionally filters by distribution type", () => {
-      // Type validation through interface definition  
+      // Type validation through interface definition
       expect(true).toBe(true)
     })
 

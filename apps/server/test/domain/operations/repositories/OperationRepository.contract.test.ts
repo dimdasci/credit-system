@@ -1,7 +1,7 @@
 // Import only needed for interface reference
 // import { Effect } from "effect"
-import { describe, expect, it } from "vitest"
 import { OperationRepository } from "@server/domain/operations/repositories/OperationRepository.js"
+import { describe, expect, it } from "vitest"
 
 describe("OperationRepository Contract", () => {
   describe("Interface Compliance", () => {

@@ -17,7 +17,7 @@ export * from "./products/entities/index.js"
 export * from "./receipts/entities/index.js"
 
 // Repository interfaces
-export * from "./products/repositories/ProductRepository.js"
 export * from "./credit-ledger/repositories/LedgerRepository.js"
 export * from "./operations/repositories/OperationRepository.js"
+export * from "./products/repositories/ProductRepository.js"
 export * from "./receipts/repositories/ReceiptRepository.js"
