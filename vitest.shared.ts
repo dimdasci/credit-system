@@ -12,8 +12,12 @@ const packageAlias = (name: string) => {
 const appAlias = (name: string) => {
   const target = process.env.TEST_DIST !== undefined ? "dist/dist/esm" : "src"
   return ({
+    // plain alias (e.g., 'server')
     [`${name}/test`]: path.join(__dirname, "apps", name, "test"),
-    [`${name}`]: path.join(__dirname, "apps", name, target)
+    [`${name}`]: path.join(__dirname, "apps", name, target),
+    // namespaced alias (e.g., '@server') for TS friendliness
+    [`@${name}/test`]: path.join(__dirname, "apps", name, "test"),
+    [`@${name}`]: path.join(__dirname, "apps", name, target)
   })
 }
 
