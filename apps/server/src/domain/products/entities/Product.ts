@@ -1,6 +1,5 @@
-import { Schema } from "@effect/schema"
 import { Credits } from "@server/domain/shared/values/Credits.js"
-import { Option } from "effect"
+import { Option, Schema } from "effect"
 
 // Product distribution type enumeration
 export const ProductDistribution = Schema.Literal("sellable", "grant")

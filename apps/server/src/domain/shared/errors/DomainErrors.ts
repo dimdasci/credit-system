@@ -1,4 +1,4 @@
-import { Schema } from "@effect/schema"
+import { Schema } from "effect"
 
 // 1. ProductUnavailable
 // Business Scenario: User attempts to purchase a product that cannot be sold right now

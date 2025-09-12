@@ -1,7 +1,7 @@
-import { Schema } from "@effect/schema"
 import { Credits } from "@server/domain/shared/values/Credits.js"
 import { MonthDate } from "@server/domain/shared/values/MonthDate.js"
 import { UserId } from "@server/domain/shared/values/UserId.js"
+import { Schema } from "effect"
 
 // Lot is conceptually an alias for the initial credit entry
 // There is no separate lots table - a "lot" IS a credit ledger entry

@@ -1,6 +1,5 @@
-import { Schema } from "@effect/schema"
 import { UserId } from "@server/domain/shared/values/UserId.js"
-import { Option } from "effect"
+import { Option, Schema } from "effect"
 
 // Operation status enumeration matching database constraints
 export const OperationStatus = Schema.Literal("open", "completed", "expired", "cancelled")

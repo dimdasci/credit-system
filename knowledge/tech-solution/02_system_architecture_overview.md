@@ -13,7 +13,7 @@ Apps
   cli     – Admin/maintenance commands (local superadmin tool via RPC)
 
 Packages
-  rpc     – Request/response schemas and errors (@effect/schema)
+  rpc     – Request/response schemas and errors (effect)
   client  – RPC client factory (HTTP + JWT)
   shared  – Domain services, DB access, telemetry utilities
 ```

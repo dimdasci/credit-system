@@ -1,4 +1,4 @@
-import { Schema } from "@effect/schema"
+import { Schema } from "effect"
 
 // Credits unit: branded non-zero integer used across domain
 export const Credits = Schema.Number.pipe(

@@ -124,7 +124,6 @@ export class PurchaseService extends Effect.Service<PurchaseService>() {
   "dependencies": {
     "@effect/rpc": "latest",
     "@effect/rpc-http": "latest", 
-    "@effect/schema": "latest",
     "effect": "latest"
   }
 }

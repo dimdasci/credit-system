@@ -1,4 +1,4 @@
-import { Schema } from "@effect/schema"
+import { Schema } from "effect"
 
 // Merchant identifier value object
 export const MerchantId = Schema.String.pipe(

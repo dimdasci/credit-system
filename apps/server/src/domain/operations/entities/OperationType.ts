@@ -1,5 +1,4 @@
-import { Schema } from "@effect/schema"
-import { Option } from "effect"
+import { Option, Schema } from "effect"
 
 // Operation type entity for rate management with sequential versioning
 export class OperationType extends Schema.Class<OperationType>("OperationType")({
