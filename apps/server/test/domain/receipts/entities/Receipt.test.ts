@@ -1,6 +1,6 @@
-import { Schema } from "@effect/schema"
 import { Receipt, ValidatedReceipt } from "@server/domain/receipts/entities/Receipt.js"
 import { createMonthDate } from "@server/domain/shared/values/MonthDate.js"
+import { Schema } from "effect"
 import { beforeEach, describe, expect, it } from "vitest"
 import { expectLeft, expectRight, runTestEffect } from "../../../utils/effect-helpers.js"
 

@@ -1,8 +1,7 @@
-import { Schema } from "@effect/schema"
 import { Credits } from "@server/domain/shared/values/Credits.js"
 import { createMonthDate, MonthDate } from "@server/domain/shared/values/MonthDate.js"
 import { UserId } from "@server/domain/shared/values/UserId.js"
-import { Option } from "effect"
+import { Option, Schema } from "effect"
 
 // Ledger entry reason enumeration matching database constraints
 export const LedgerReason = Schema.Literal(

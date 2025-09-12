@@ -1,4 +1,4 @@
-import { Schema } from "@effect/schema"
+import { Schema } from "effect"
 
 // Month-truncated date schema for partition keys (YYYY-MM-01 format only)
 export const MonthDate = Schema.String.pipe(

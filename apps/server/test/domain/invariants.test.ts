@@ -1,4 +1,4 @@
-import { Schema } from "@effect/schema"
+import { Schema } from "effect"
 import { describe, it } from "vitest"
 
 import { LedgerEntryValidated } from "@server/domain/credit-ledger/entities/LedgerEntry.js"

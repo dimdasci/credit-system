@@ -1,6 +1,6 @@
-import { Schema } from "@effect/schema"
 import { MonthDate } from "@server/domain/shared/values/MonthDate.js"
 import { UserId } from "@server/domain/shared/values/UserId.js"
+import { Schema } from "effect"
 
 // Receipt entity for purchase documentation
 export class Receipt extends Schema.Class<Receipt>("Receipt")({
