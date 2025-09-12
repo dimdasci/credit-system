@@ -4,8 +4,8 @@ import { PgClient } from "@effect/sql-pg"
 import { Config, Context, Effect, Layer, Option } from "effect"
 import type { ConfigError } from "effect/ConfigError"
 import type { Redacted } from "effect/Redacted"
-import { DatabaseManager, MissingMerchantDatabaseUrlError } from "./DatabaseManager.js"
 import { types as pgTypes } from "pg"
+import { DatabaseManager, MissingMerchantDatabaseUrlError } from "./DatabaseManager.js"
 
 // Configure pg (node-postgres) type parsers so encoded values match our schemas
 // - 1184 timestamptz: keep ISO string as-is
