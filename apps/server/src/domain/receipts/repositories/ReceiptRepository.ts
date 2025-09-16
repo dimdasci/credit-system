@@ -1,7 +1,7 @@
 import type { Effect } from "effect"
 import { Context } from "effect"
-import type { DomainError } from "../../shared/errors/DomainErrors.js"
-import type { Receipt } from "../entities/Receipt.js"
+import type { DomainError } from "../../shared/DomainErrors.js"
+import type { Receipt } from "../Receipt.js"
 
 // Query options for receipt history
 export interface ReceiptQueryOptions {

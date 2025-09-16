@@ -1,7 +1,7 @@
 import type { Effect } from "effect"
 import { Context } from "effect"
-import type { DomainError } from "../../shared/errors/DomainErrors.js"
-import type { Operation } from "../entities/Operation.js"
+import type { DomainError } from "../../shared/DomainErrors.js"
+import type { Operation } from "../Operation.js"
 
 // Query options for operation history
 export interface OperationQueryOptions {
