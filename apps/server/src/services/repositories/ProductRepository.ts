@@ -1,3 +1,4 @@
+import { MerchantContext } from "@credit-system/shared"
 import * as SqlSchema from "@effect/sql/SqlSchema"
 import { Effect, Layer, Schema } from "effect"
 import { DatabaseManager } from "../../db/DatabaseManager.js"
@@ -9,12 +10,13 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
   {
     effect: Effect.gen(function*() {
       const db = yield* DatabaseManager
+      const merchantContext = yield* MerchantContext
 
       const _createProduct = SqlSchema.void({
         Request: Product,
         execute: (product) =>
           Effect.gen(function*() {
-            const sql = yield* db.getConnection("default-merchant")
+            const sql = yield* db.getConnection(merchantContext.merchantId)
             return yield* sql`
               INSERT INTO products (product_code, title, credits, access_period_days, distribution, grant_policy, effective_at, archived_at)
               VALUES (${product.product_code}, ${product.title}, ${product.credits}, ${product.access_period_days}, 
@@ -28,7 +30,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
         Result: Product,
         execute: (code) =>
           Effect.gen(function*() {
-            const sql = yield* db.getConnection("default-merchant")
+            const sql = yield* db.getConnection(merchantContext.merchantId)
             return yield* sql`
               SELECT * FROM products 
               WHERE product_code = ${code}
@@ -42,7 +44,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
         Result: Product,
         execute: () =>
           Effect.gen(function*() {
-            const sql = yield* db.getConnection("default-merchant")
+            const sql = yield* db.getConnection(merchantContext.merchantId)
             return yield* sql`
               SELECT * FROM products 
               WHERE effective_at <= NOW() 
@@ -57,7 +59,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
         Result: Product,
         execute: () =>
           Effect.gen(function*() {
-            const sql = yield* db.getConnection("default-merchant")
+            const sql = yield* db.getConnection(merchantContext.merchantId)
             return yield* sql`
               SELECT * FROM products 
               WHERE effective_at <= NOW() 
@@ -81,7 +83,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
 
         archiveProduct: (code: string, archived_at: Date) =>
           Effect.gen(function*() {
-            const sql = yield* db.getConnection("default-merchant")
+            const sql = yield* db.getConnection(merchantContext.merchantId)
             return yield* sql`
               UPDATE products 
               SET archived_at = ${archived_at}
@@ -92,7 +94,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
         // Pricing operations
         getResolvedPrice: (product_code: string, country: string) =>
           Effect.gen(function*() {
-            const sql = yield* db.getConnection("default-merchant")
+            const sql = yield* db.getConnection(merchantContext.merchantId)
             const result = yield* sql<{
               country: string
               currency: string
@@ -120,7 +122,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
           distribution?: "sellable" | "grant"
         ) =>
           Effect.gen(function*() {
-            const sql = yield* db.getConnection("default-merchant")
+            const sql = yield* db.getConnection(merchantContext.merchantId)
             return yield* sql<Product>`
               SELECT * FROM products 
               WHERE effective_at <= ${at_date}
@@ -132,7 +134,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
 
         isProductActive: (product_code: string, at_date: Date = new Date()) =>
           Effect.gen(function*() {
-            const sql = yield* db.getConnection("default-merchant")
+            const sql = yield* db.getConnection(merchantContext.merchantId)
             const result = yield* sql<{ active: boolean }>`
               SELECT 
                 CASE WHEN COUNT(*) > 0 THEN true ELSE false END as active

@@ -1,8 +1,9 @@
+import { MerchantContext } from "@credit-system/shared"
 import { DatabaseManager } from "@server/db/DatabaseManager.js"
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
 import { Effect, Layer, Option } from "effect"
 import { describe, expect, it } from "vitest"
-import { TestProductsArray } from "../../fixtures/test-data.js"
+import { TestProductsArray } from "../../fixtures/product-test-data.js"
 
 // Mock DatabaseManager with preset test data
 // Track context for complex queries
@@ -123,9 +124,16 @@ const MockDatabaseManagerLayer = Layer.succeed(DatabaseManager, {
   getConnection: () => Effect.succeed(createMockSql())
 })
 
+const MockMerchantContextLayer = Layer.succeed(MerchantContext, {
+  merchantId: "test-merchant-id"
+})
+
 const TestLayer = Layer.provide(
-  ProductRepository.DefaultWithoutDependencies,
-  MockDatabaseManagerLayer
+  Layer.provide(
+    ProductRepository.DefaultWithoutDependencies,
+    MockDatabaseManagerLayer
+  ),
+  MockMerchantContextLayer
 )
 
 describe("ProductRepository Business Logic", () => {
