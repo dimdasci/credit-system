@@ -1,6 +1,6 @@
-import { Credits } from "@server/domain/shared/values/Credits.js"
-import { createMonthDate, MonthDate } from "@server/domain/shared/values/MonthDate.js"
-import { UserId } from "@server/domain/shared/values/UserId.js"
+import { Credits } from "@server/domain/shared/Credits.js"
+import { createMonthDate, MonthDate } from "@server/domain/shared/MonthDate.js"
+import { UserId } from "@server/domain/shared/UserId.js"
 import { Option, Schema } from "effect"
 
 // Ledger entry reason enumeration matching database constraints

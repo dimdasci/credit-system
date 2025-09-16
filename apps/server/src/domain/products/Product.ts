@@ -1,4 +1,4 @@
-import { Credits } from "@server/domain/shared/values/Credits.js"
+import { Credits } from "@server/domain/shared/Credits.js"
 import { Option, Schema } from "effect"
 
 // Product distribution type enumeration

@@ -16,8 +16,5 @@ export * from "./products/entities/index.js"
 // Receipts aggregate
 export * from "./receipts/entities/index.js"
 
-// Repository interfaces
-export * from "./credit-ledger/repositories/LedgerRepository.js"
-export * from "./operations/repositories/OperationRepository.js"
-export * from "./products/repositories/ProductRepository.js"
-export * from "./receipts/repositories/ReceiptRepository.js"
+// Services (repositories moved to services layer)
+export { ProductRepository } from "../services/repositories/ProductRepository.js"

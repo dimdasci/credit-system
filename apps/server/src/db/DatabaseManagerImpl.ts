@@ -30,8 +30,8 @@ export const PgLayerFactoryLive = Layer.succeed(
 
 export const DatabaseManagerLive = Layer.effect(
   DatabaseManager,
-  Effect.gen(function*(_) {
-    const factory = yield* _(PgLayerFactory)
+  Effect.gen(function*() {
+    const factory = yield* PgLayerFactory
     const poolMap = new Map<string, Layer.Layer<SqlClient.SqlClient, SqlError.SqlError | ConfigError, never>>()
 
     return DatabaseManager.of({

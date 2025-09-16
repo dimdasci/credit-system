@@ -1,7 +1,7 @@
 import type { Effect } from "effect"
 import { Context } from "effect"
-import type { DomainError } from "../../shared/errors/DomainErrors.js"
-import type { LedgerEntry } from "../entities/LedgerEntry.js"
+import type { DomainError } from "../../shared/DomainErrors.js"
+import type { LedgerEntry } from "../LedgerEntry.js"
 
 // Query options for ledger history and lot queries
 export interface LedgerQueryOptions {

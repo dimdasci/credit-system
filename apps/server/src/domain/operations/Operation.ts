@@ -1,4 +1,4 @@
-import { UserId } from "@server/domain/shared/values/UserId.js"
+import { UserId } from "@server/domain/shared/UserId.js"
 import { Option, Schema } from "effect"
 
 // Operation status enumeration matching database constraints

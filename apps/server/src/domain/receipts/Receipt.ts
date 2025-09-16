@@ -1,5 +1,5 @@
-import { MonthDate } from "@server/domain/shared/values/MonthDate.js"
-import { UserId } from "@server/domain/shared/values/UserId.js"
+import { MonthDate } from "@server/domain/shared/MonthDate.js"
+import { UserId } from "@server/domain/shared/UserId.js"
 import { Schema } from "effect"
 
 // Receipt entity for purchase documentation
