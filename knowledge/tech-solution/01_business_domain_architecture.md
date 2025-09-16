@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the business domain architecture for the Credit Management Service, providing business-focused specifications for domain entities, business processes, and service composition patterns. The architecture follows Domain-Driven Design principles with clear separation between business logic and implementation concerns.
+This document defines the business domain architecture for the Credit Management Service, providing business-focused specifications for domain schemas, business processes, and service composition patterns. The architecture uses a pragmatic approach with domain schemas for data structures and Effect.Service patterns for business logic.
 
 ## 1.1 Domain Model Composition
 
@@ -164,117 +164,111 @@ Entity: OperationType (conversion rate management)
 - Chargeback.Apply → reason = chargeback
 - Lot.Expire → reason = expiry
 
-### Domain Services
+### Service Architecture
 
-Domain services coordinate entity interactions and enforce business rules that span multiple entities.
+Business logic is implemented using Effect.Service patterns in the services layer, with domain schemas providing data structure definitions.
 
-#### LedgerService
+#### Repository Services (Data Access Layer)
 ```
-Service: LedgerService (lot and ledger entry management)
-  Operations:
-    createCreditLot(user_id, product, operation_context) -> Lot
-    recordDebit(user_id, operation, target_lot_id) -> LedgerEntry
-    calculateBalance(user_id) -> Credits
-    getLedgerHistory(user_id, options?) -> LedgerEntry[]
+LedgerRepository (Effect.Service)
+  SQL Operations:
+    createCreditLot(user_id, product, operation_context) -> Effect<Lot, DomainError>
+    recordDebit(user_id, operation, target_lot_id) -> Effect<LedgerEntry, DomainError>
+    calculateBalance(user_id) -> Effect<Credits, DomainError>  // SQL: SELECT SUM(amount) FROM ledger_entries WHERE user_id = $1
+    getLedgerHistory(user_id, options?) -> Effect<LedgerEntry[], DomainError>
+    selectFIFOLots(user_id, required_credits) -> Effect<Lot[], DomainError>  // SQL: ORDER BY created_at
 
+  Database Rules:
+    - Balance calculations performed in SQL for efficiency
+    - FIFO selection uses SQL ORDER BY created_at LIMIT
+    - Merchant isolation enforced via multi-tenant database routing
+    - Partition pruning for performance (created_month partitioning)
+```
+
+#### Business Logic Services
+```
+LedgerService (Effect.Service) 
+  Orchestration:
+    processLotCreation(user_id, product) -> Effect<Lot, BusinessError>
+    processDebitOperation(user_id, operation) -> Effect<LedgerEntry, BusinessError>
+    
+  Dependencies:
+    - LedgerRepository (data access)
+    - ProductRepository (product validation)
+    
   Business Rules:
-    - Creates both Lot (container) and initial LedgerEntry (credit movement)
-    - Debit LedgerEntries target specific lots via FIFO selection
-    - User balance = sum of all user's LedgerEntry amounts
-    - Lot balance = sum of LedgerEntries where entry.lot_id = lot.lot_id
-    - All operations respect merchant data isolation at the database level
+    - Validates product availability and pricing
+    - Coordinates transaction boundaries
+    - Maps database errors to domain errors
 ```
 
-#### BalanceCalculator
-```
-Service: BalanceCalculator (pure balance computation algorithms)
-  Operations:
-    calculateUserBalance(ledger_entries) -> Credits
-    calculateLotBalance(lot_id, ledger_entries) -> Credits
-    selectOldestNonExpiredLot(lots, current_time) -> Lot?
-
-  Algorithms:
-    User Balance: sum(all ledger entries for user)
-    Lot Balance: sum(ledger entries targeting specific lot_id)
-    FIFO Selection: oldest non-expired lot by issued_at timestamp with positive balance
 ```
 
-#### OperationManager
+#### Additional Business Services
 ```
-Service: OperationManager (two-phase operation lifecycle)
-  Operations:
-    openOperation(user_id, operation_type_code, workflow_id?) -> Operation
-    recordAndCloseOperation(operation_id, resource_amount, resource_unit, completed_at) -> LedgerEntry
-    cleanupExpiredOperations() -> void
+OperationRepository (Effect.Service)
+  SQL Operations:
+    openOperation(user_id, operation_type_code, workflow_id?) -> Effect<Operation, DomainError>
+    recordAndCloseOperation(operation_id, resource_amount, completed_at) -> Effect<LedgerEntry, DomainError>
+    cleanupExpiredOperations() -> Effect<number, DomainError>  // SQL: DELETE FROM operations WHERE status='expired' AND closed_at < $1
 
-  Business Rules:
-    - Single open operation per (merchant, user_id) at any time. In a per‑merchant DB deployment, this is enforced within each isolated merchant database.
-    - Rate captured at open time ensures billing stability
-    - Operations expire after merchant-configured timeout
-    - Operation entity contains only reservation data (immutable after creation)
-    - Consumption data (resource_amount, resource_unit) provided at close time
-    - Completed operations generate debit entries via FIFO lot selection
-```
+  Database Constraints:
+    - UNIQUE(user_id) WHERE status='open' enforces single open operation per user
+    - Expired operations cleaned up via SQL batch operations
+    - Rate capture handled at database level during INSERT
 
-#### ExpiryProcessor
-```
-Service: ExpiryProcessor (automated lot expiry management)
-  Operations:
-    processExpiredLots(current_time) -> LedgerEntry[]
-    findExpiredLots(current_time) -> Lot[]
+ExpiryProcessor (Effect.Service)
+  SQL-Based Processing:
+    processExpiredLots(current_time) -> Effect<LedgerEntry[], DomainError>  // SQL: lot expiry batch processing
+    findExpiredLots(current_time) -> Effect<Lot[], DomainError>  // SQL: SELECT WHERE expires_at < $1
 
-  Business Rules:
-    - Lots (issuance entries) expire when current_time > expires_at (stored on issuance entry)
-    - Expired lots with positive balance generate expiry debit entries. Expiry debit entries use operation_type=lot_expiry, resource_amount=remaining_credits, resource_unit=CREDIT, workflow_id=system-generated.
-    - Expiry processing runs as scheduled background jobs
-    - Process lots of a single merchant in the isolated merchant database
-```
+  Background Processing:
+    - Batch SQL operations for expired lot identification and processing
+    - Expiry debit entries created via bulk INSERT operations
+    - Scheduled via pg_cron for automated processing
 
-### Repository Interface Contracts
+### Effect.Service Repository Implementations
 
-Repositories provide data access interfaces for domain entities with clear contracts for business operations.
+Repository services provide data access using Effect.Service patterns with SQL-first approach for performance and correctness.
 
-#### LedgerRepository
-```
-Repository: LedgerRepository (immutable ledger entry management)
-  Operations:
-    createLedgerEntry(entry) -> void  // entry includes created_month (UTC)
-    getLedgerHistory(user_id, options?) -> LedgerEntry[]  // server derives month pruning from time range
-    getUserBalance(user_id) -> Credits
-    getActiveLots(user_id) -> Lot[]  // aggregated view over issuance entries (initial credit entries)
-
-  Data Guarantees:
-    - All ledger entries immutable after creation
-    - Merchant data isolation enforced at query level
-    - Balance calculations consistent with ledger history
+#### LedgerRepository (Effect.Service)
+```typescript
+export class LedgerRepository extends Effect.Service<LedgerRepository>()("LedgerRepository", {
+  effect: Effect.gen(function* () {
+    const db = yield* DatabaseManager
+    return {
+      createLedgerEntry: (entry) => // INSERT with created_month computed
+      getLedgerHistory: (user_id, options?) => // SQL with partition pruning
+      getUserBalance: (user_id) => // SQL: SELECT SUM(amount) FROM ledger_entries WHERE user_id = $1
+      getActiveLots: (user_id) => // SQL aggregation over initial credit entries
+    }
+  }),
+  dependencies: [DatabaseManager.Default]
+}) {}
 ```
 
-#### ProductRepository
+#### ProductRepository (Effect.Service)  
+```typescript
+export class ProductRepository extends Effect.Service<ProductRepository>()("ProductRepository", {
+  effect: Effect.gen(function* () {
+    const db = yield* DatabaseManager
+    return {
+      createProduct: (product) => // INSERT with validation
+      getActiveProducts: (distribution?) => // SQL: WHERE effective_at <= NOW() AND archived_at IS NULL
+      getProductByCode: (product_code) => // SQL: SELECT with active filter
+      getResolvedPrice: (product_code, country) => // SQL: country-specific price resolution
+      archiveProduct: (product_code, archived_at) => // UPDATE archived_at
+    }
+  }),
+  dependencies: [DatabaseManager.Default]  
+}) {}
 ```
-Repository: ProductRepository (product catalog management)
-  Operations:
-    createProduct(product) -> void
-    getActiveProducts(distribution?) -> Product[]
-    getProductByCode(product_code) -> Product?
-    getResolvedPrice(product_code, country) -> PriceRow?  // selection order: country, then fallback "*"
-    archiveProduct(product_code, archived_at) -> void
 
-  Data Guarantees:
-    - Products immutable once created (except archived_at)
-    - Only active products returned unless explicitly requested
-    - Merchant isolation enforced for all catalog operations
-```
-
-#### MerchantRepository
-```
-Repository: MerchantRepository (merchant configuration management)
-  Operations:
-    getMerchantConfig() -> MerchantConfig
-
-  Data Guarantees:
-    - Merchant configuration stable after initial creation
-    - Updates rare and manually
-```
+**Data Guarantees:**
+- All repositories enforce merchant isolation via multi-tenant database routing
+- SQL-first approach ensures performance and data consistency  
+- Effect.Service provides type-safe dependency injection and error handling
+- Database constraints and triggers maintain data integrity
 
 ## 1.2 Business Process Flows
 
