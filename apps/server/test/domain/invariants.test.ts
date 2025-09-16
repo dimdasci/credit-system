@@ -1,10 +1,10 @@
 import { Schema } from "effect"
 import { describe, it } from "vitest"
 
-import { LedgerEntryValidated } from "@server/domain/credit-ledger/entities/LedgerEntry.js"
-import { OperationValidated } from "@server/domain/operations/entities/Operation.js"
-import { ProductValidated } from "@server/domain/products/entities/Product.js"
-import { createMonthDate } from "@server/domain/shared/values/MonthDate.js"
+import { LedgerEntryValidated } from "@server/domain/credit-ledger/LedgerEntry.js"
+import { OperationValidated } from "@server/domain/operations/Operation.js"
+import { ProductValidated } from "@server/domain/products/Product.js"
+import { createMonthDate } from "@server/domain/shared/MonthDate.js"
 import { expectLeft, expectRight, runTestEffect } from "../utils/effect-helpers.js"
 
 describe("Domain invariants", () => {
