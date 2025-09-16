@@ -18,6 +18,24 @@ The project documentation is available in the `knowledge` directory:
 
 The project is built on Effect framework (https://effect.website/docs/) with strong emphasis on type safety and correctness. The usage of `any` type is prohibited in the codebase to ensure type safety. Every time you face a type error you must treat it as a luck of type system understanding. In that case slow down, read the documentation, effect source code, search for examples, and ask for help if needed.
 
+## Effect Framework Guidelines
+
+**Effect.gen Pattern**: Always use Effect.gen without the helper `_` parameter. Effect understands and processes the generator function directly:
+
+```typescript
+// Correct - clean Effect.gen pattern
+Effect.gen(function* () {
+  const result = yield* someEffect
+  return result
+})
+
+// Incorrect - avoid helper parameter
+Effect.gen(function* (_) {
+  const result = yield* _(someEffect)
+  return result
+})
+```
+
 ## Repository
 
 Project repository https://github.com/dimdasci/credit-system/. Use MCP tools to work with issues.
