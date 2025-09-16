@@ -1,4 +1,5 @@
 export * from "./Credits.js"
+export * from "./DomainErrors.js"
 export * from "./MerchantId.js"
 export * from "./MonthDate.js"
 export * from "./UserId.js"
