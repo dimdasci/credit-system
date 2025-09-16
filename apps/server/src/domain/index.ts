@@ -1,20 +1,20 @@
 // Shared value objects
-export * from "./shared/values/index.js"
+export * from "./shared/index.js"
 
 // Domain errors
-export * from "./shared/errors/index.js"
+export * from "./shared/index.js"
 
 // Credit ledger aggregate
-export * from "./credit-ledger/entities/index.js"
+export * from "./credit-ledger/index.js"
 
 // Operations aggregate
-export * from "./operations/entities/index.js"
+export * from "./operations/index.js"
 
 // Products aggregate
-export * from "./products/entities/index.js"
+export * from "./products/index.js"
 
 // Receipts aggregate
-export * from "./receipts/entities/index.js"
+export * from "./receipts/index.js"
 
 // Services (repositories moved to services layer)
 export { ProductRepository } from "../services/repositories/ProductRepository.js"
