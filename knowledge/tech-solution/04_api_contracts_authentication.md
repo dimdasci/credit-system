@@ -117,7 +117,7 @@ try {
 #### Purchase.Settled Command Schema
 ```typescript
 // packages/rpc/src/schemas/PurchaseContracts.ts
-import { Schema } from "@effect/schema"
+import { Schema } from "effect"
 import { Request } from "@effect/rpc"
 
 export const PurchaseSettledInput = Schema.Struct({

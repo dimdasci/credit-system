@@ -43,7 +43,7 @@ const AdminApiPublicLive = HttpApiBuilder.group(
   "admin-public",
   (handlers) =>
     handlers.handle("generateMerchantToken", () =>
-      Effect.gen(function*(_) {
+      Effect.gen(function*() {
         const tokenService = yield* TokenService
         return yield* tokenService.generateMerchantToken()
       }))
@@ -54,7 +54,7 @@ const AdminApiLive = HttpApiBuilder.group(
   "admin",
   (handlers) =>
     handlers.handle("getMerchantId", () =>
-      Effect.gen(function*(_) {
+      Effect.gen(function*() {
         const merchantContext = yield* MerchantContext
         return { merchantId: merchantContext.merchantId }
       }))

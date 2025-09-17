@@ -10,58 +10,50 @@ This document provides implementation-ready specifications for testing, deployme
 
 The system uses Effect's built-in testing framework with multi-tenant test isolation and deterministic test scenarios.
 
-#### Effect Test Framework Configuration
+#### Effect.Service Testing Configuration
 ```typescript
-// packages/shared/src/test/TestRuntime.ts
-import { Effect, TestServices } from "effect"
-import { NodeSdk } from "@effect/opentelemetry"
+// test/utils/effect-helpers.ts
+import { Effect, TestServices, Layer } from "effect"
 
+// Test runtime with mock services
 export const TestRuntime = Effect.runtime<TestServices.TestServices>().pipe(
   Runtime.runSync
 )
 
-// Test-specific service implementations
-export const TestLayers = Layer.mergeAll(
-  TestServices.TestServices,
-  SqlLive.layer, // Real database for integration tests
-  ConfigTest.layer, // Test configuration
-  TelemetryTest.layer // No-op telemetry for tests
+// Mock service layers for unit testing
+export const MockServiceLayers = Layer.mergeAll(
+  ProductRepository.Mock,
+  LedgerRepository.Mock,
+  OperationRepository.Mock
 )
 
-// Multi-tenant test database setup
-export const TestMerchantConfig = {
-  testMerchants: ["test-acme", "test-demo"],
-  testUsers: ["user-123", "user-456"],
-  cleanupAfterEach: true
-}
+// Integration test layers with real database
+export const IntegrationLayers = Layer.mergeAll(
+  DatabaseManager.Live,
+  ProductRepository.Default,
+  LedgerRepository.Default
+)
 ```
 
-#### Test Database Management
+#### Test Database Setup
 ```typescript
-// packages/shared/src/test/TestDatabase.ts
-export class TestDatabaseManager extends Effect.Service<TestDatabaseManager>()({
-  effect: Effect.gen(function* (_) {
-    const config = yield* _(Config)
-    
+// test/fixtures/database-setup.ts
+export class TestDatabaseSetup extends Effect.Service<TestDatabaseSetup>()("TestDatabaseSetup", {
+  effect: Effect.gen(function* () {
     return {
-      setupTestMerchant: (merchantId: string) => Effect.gen(function* (_) {
-        const testDbUrl = `${config.testDatabaseUrl}_${merchantId}`
-        // Create test database and run migrations
-        yield* _(runMigrations(testDbUrl))
-        return new DbClient(testDbUrl)
+      setupTestDatabase: () => Effect.gen(function* () {
+        // Create isolated test database
+        // Run migrations and seed test data
       }),
       
-      cleanupTestMerchant: (merchantId: string) => Effect.gen(function* (_) {
-        const testDbUrl = `${config.testDatabaseUrl}_${merchantId}`
-        // Truncate all tables but preserve schema
-        yield* _(cleanupAllTables(testDbUrl))
+      cleanupAfterTest: () => Effect.gen(function* () {
+        // Truncate tables but preserve schema
+        // Reset sequences and constraints
       }),
       
-      createTestData: (merchantId: string, scenario: TestScenario) => Effect.gen(function* (_) {
-        const client = yield* _(getTestClient(merchantId))
-        yield* _(insertTestProducts(client, scenario.products))
-        yield* _(insertTestUsers(client, scenario.users))
-        return scenario
+      createTestMerchant: (merchantId: string) => Effect.gen(function* () {
+        // Set up multi-tenant test isolation
+        // Create test merchant configuration
       })
     }
   })
@@ -74,70 +66,69 @@ The testing strategy follows strict Test-Driven Development with red-green-refac
 
 #### Purchase Settlement TDD Example
 ```typescript
-// packages/shared/src/test/PurchaseSettlement.test.ts
-import { Effect, TestClock, TestRandom } from "effect"
-import { describe, it, expect } from "@effect/vitest"
+// test/services/business/LedgerService.test.ts
+import { Effect, TestClock } from "effect"
+import { describe, it, expect } from "vitest"
 
-describe("Purchase Settlement", () => {
+describe("LedgerService Purchase Settlement", () => {
   it("creates exactly one credit lot per settlement", () =>
-    Effect.gen(function* (_) {
-      // ARRANGE - Test scenario setup
-      const merchantId = "test-acme"
+    Effect.gen(function* () {
+      // ARRANGE - Use mock services for unit testing
       const userId = "user-123"
       const product = TestData.products.basicPlan
       const settlement = TestData.settlements.validSettlement
       
-      yield* _(TestDatabase.setupTestMerchant(merchantId))
-      yield* _(TestDatabase.createTestData(merchantId, { products: [product] }))
+      // ACT - Execute with mock dependencies
+      const ledgerService = yield* LedgerService
+      const result = yield* ledgerService.processLotCreation(userId, product)
       
-      // ACT - Execute purchase settlement
-      const result = yield* _(
-        PurchaseSettlementService.settle({
-          userId,
-          productCode: product.code,
-          settlementData: settlement
-        })
-      )
-      
-      // ASSERT - Verify single lot created
-      const ledgerEntries = yield* _(
-        LedgerRepository.getUserLedgerHistory(userId)
-      )
-      const creditEntries = ledgerEntries.filter(e => e.amount > 0)
-      
-      expect(creditEntries).toHaveLength(1)
-      expect(creditEntries[0].amount).toBe(product.credits)
-      expect(creditEntries[0].reason).toBe("purchase")
-      expect(result.lot.lotId).toBe(creditEntries[0].entryId)
-    }).provide(TestLayers)
+      // ASSERT - Verify business logic without database
+      expect(result.credits).toBe(product.credits)
+      expect(result.userId).toBe(userId)
+      expect(result.productCode).toBe(product.code)
+    }).pipe(
+      Effect.provide(MockServiceLayers),
+      Effect.runPromise
+    )
   )
-  
-  it("prevents duplicate settlements with same external_ref", () =>
-    Effect.gen(function* (_) {
-      const merchantId = "test-acme"
-      const settlement = TestData.settlements.duplicateRef
-      
-      yield* _(TestDatabase.setupTestMerchant(merchantId))
-      
-      // First settlement succeeds
-      const firstResult = yield* _(
-        PurchaseSettlementService.settle(settlement)
+
+  it("handles database errors gracefully", () =>
+    Effect.gen(function* () {
+      // Test error handling with integration layer
+      const result = yield* Effect.either(
+        LedgerService.pipe(
+          Effect.flatMap(service => service.processLotCreation("invalid-user", invalidProduct))
+        )
       )
       
-      // Second settlement returns same result (idempotent)
-      const secondResult = yield* _(
-        PurchaseSettlementService.settle(settlement)
-      )
+      expect(result._tag).toBe("Left")
+      expect(result.left).toBeInstanceOf(DomainError)
+    }).pipe(
+      Effect.provide(IntegrationLayers),
+      Effect.runPromise
+    )
+  )
+
+  it("repository integration test with real database", () =>
+    Effect.gen(function* () {
+      // ARRANGE - Set up test database
+      yield* TestDatabaseSetup.pipe(Effect.flatMap(setup => setup.setupTestDatabase()))
       
-      expect(firstResult.lot.lotId).toBe(secondResult.lot.lotId)
-      expect(firstResult.receipt.receiptId).toBe(secondResult.receipt.receiptId)
+      // ACT - Use real repository with database
+      const repo = yield* LedgerRepository
+      const result = yield* repo.createCreditLot(userId, product, operationContext)
       
-      // Only one ledger entry created
-      const entries = yield* _(
-        LedgerRepository.getUserLedgerHistory(settlement.userId)
-      )
-      expect(entries.filter(e => e.amount > 0)).toHaveLength(1)
-    }).provide(TestLayers)
+      // ASSERT - Verify database state
+      const balance = yield* repo.getUserBalance(userId)
+      expect(balance).toBe(product.credits)
+      
+      const history = yield* repo.getLedgerHistory(userId)
+      expect(history).toHaveLength(1)
+      expect(history[0].reason).toBe("purchase")
+    }).pipe(
+      Effect.provide(IntegrationLayers),
+      Effect.runPromise
+    )
   )
 })
 ```

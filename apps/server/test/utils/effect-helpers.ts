@@ -1,0 +1,32 @@
+import type { Either } from "effect"
+import { Effect } from "effect"
+import { expect } from "vitest"
+
+// Run an Effect and capture Either result synchronously
+export const runTestEffect = <A, E, R>(effect: Effect.Effect<A, E, R>): Either.Either<A, E> => {
+  // For Schema effects with 'unknown' requirements, we can cast to never
+  return Effect.runSync(Effect.either(effect as Effect.Effect<A, E, never>)) as Either.Either<A, E>
+}
+
+// Assertion helpers for Effect results
+export const expectRight = <A, E>(result: Either.Either<A, E>): A => {
+  expect((result as any)._tag).toBe("Right")
+  return (result as any).right as A
+}
+
+export const expectLeft = <A, E>(result: Either.Either<A, E>): E => {
+  expect((result as any)._tag).toBe("Left")
+  return (result as any).left as E
+}
+
+// Effect test wrapper that handles common patterns
+export const testEffect = <A, E, R>(
+  name: string,
+  effect: Effect.Effect<A, E, R>,
+  assertion: (result: Either.Either<A, E>) => void
+) => {
+  return it(name, () => {
+    const result = runTestEffect(effect)
+    assertion(result)
+  })
+}

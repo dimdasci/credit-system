@@ -39,7 +39,9 @@
     "paths": {
       "@credit-system/rpc": ["./packages/rpc/src/index.ts"],
       "@credit-system/client": ["./packages/client/src/index.ts"],
-      "@credit-system/shared": ["./packages/shared/src/index.ts"]
+      "@credit-system/shared": ["./packages/shared/src/index.ts"],
+      "@server/*": ["./apps/server/src/*"],
+      "server/*": ["./apps/server/src/*"]
     }
   }
 }

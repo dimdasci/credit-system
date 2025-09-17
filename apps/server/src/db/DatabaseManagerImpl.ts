@@ -4,7 +4,17 @@ import { PgClient } from "@effect/sql-pg"
 import { Config, Context, Effect, Layer, Option } from "effect"
 import type { ConfigError } from "effect/ConfigError"
 import type { Redacted } from "effect/Redacted"
+import { types as pgTypes } from "pg"
 import { DatabaseManager, MissingMerchantDatabaseUrlError } from "./DatabaseManager.js"
+
+// Configure pg (node-postgres) type parsers so encoded values match our schemas
+// - 1184 timestamptz: keep ISO string as-is
+// - 1114 timestamp (without time zone): assume UTC and append 'Z' to make it ISO
+// - 1082 date: keep plain YYYY-MM-DD string
+// Note: This is app-level configuration (client-side), not a DB migration.
+pgTypes.setTypeParser(1184, (s: string) => s)
+pgTypes.setTypeParser(1114, (s: string) => `${s}Z`)
+pgTypes.setTypeParser(1082, (s: string) => s)
 
 export interface PgLayerFactory {
   readonly make: (
@@ -20,8 +30,8 @@ export const PgLayerFactoryLive = Layer.succeed(
 
 export const DatabaseManagerLive = Layer.effect(
   DatabaseManager,
-  Effect.gen(function*(_) {
-    const factory = yield* _(PgLayerFactory)
+  Effect.gen(function*() {
+    const factory = yield* PgLayerFactory
     const poolMap = new Map<string, Layer.Layer<SqlClient.SqlClient, SqlError.SqlError | ConfigError, never>>()
 
     return DatabaseManager.of({
