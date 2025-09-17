@@ -235,12 +235,12 @@ const mockSqlClient = {
     // DELETE expired operations
     if (
       query.includes("DELETE FROM operations") &&
-      query.includes("WHERE status IN ('expired', 'completed', 'cancelled')") &&
+      query.includes("WHERE status IN ('expired', 'completed')") &&
       query.includes("AND closed_at < ?")
     ) {
       const beforeDate = resolvedValues[0] as Date
       const eligibleOps = TestOperationsArray.filter((op) =>
-        ["expired", "completed", "cancelled"].includes(op.status) &&
+        ["expired", "completed"].includes(op.status) &&
         op.closed_at && new Date(op.closed_at) < beforeDate
       )
       const effect = Effect.succeed({ affectedRows: eligibleOps.length, rowCount: eligibleOps.length })
@@ -274,8 +274,6 @@ const mockSqlClient = {
       const totalOps = opsInRange.length
       const completedOps = opsInRange.filter((op) => op.status === "completed").length
       const expiredOps = opsInRange.filter((op) => op.status === "expired").length
-      const cancelledOps = opsInRange.filter((op) => op.status === "cancelled").length
-
       // Calculate average duration for completed operations
       const completedWithDuration = opsInRange.filter((op) => op.status === "completed" && op.closed_at)
       const avgDurationMinutes = completedWithDuration.length > 0
@@ -289,7 +287,6 @@ const mockSqlClient = {
         total_operations: totalOps,
         completed_operations: completedOps,
         expired_operations: expiredOps,
-        cancelled_operations: cancelledOps,
         avg_duration_minutes: avgDurationMinutes
       }])
       return attachTemplate(effect)

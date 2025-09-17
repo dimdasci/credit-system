@@ -10,7 +10,7 @@ import { Effect, Layer, Schema } from "effect"
 export interface OperationQueryOptions {
   limit?: number
   offset?: number
-  status?: "open" | "completed" | "expired" | "cancelled"
+  status?: "open" | "completed" | "expired"
   operation_type_code?: string
   workflow_id?: string
   fromDate?: Date
@@ -141,7 +141,7 @@ export class OperationRepository extends Effect.Service<OperationRepository>()(
 
         updateOperationStatus: (
           operation_id: string,
-          status: "completed" | "expired" | "cancelled",
+          status: "completed" | "expired",
           closed_at?: Date
         ): Effect.Effect<void, InvalidRequest | ServiceUnavailable> =>
           Effect.gen(function*() {
@@ -412,7 +412,7 @@ export class OperationRepository extends Effect.Service<OperationRepository>()(
 
             const result = yield* sql`
               DELETE FROM operations
-              WHERE status IN ('expired', 'completed', 'cancelled')
+              WHERE status IN ('expired', 'completed')
                 AND closed_at < ${before_date}
             `.pipe(Effect.mapError(mapDatabaseError))
 
@@ -446,7 +446,6 @@ export class OperationRepository extends Effect.Service<OperationRepository>()(
           total_operations: number
           completed_operations: number
           expired_operations: number
-          cancelled_operations: number
           avg_duration_minutes: number
         }, InvalidRequest | ServiceUnavailable> =>
           Effect.gen(function*() {
@@ -468,14 +467,12 @@ export class OperationRepository extends Effect.Service<OperationRepository>()(
               total_operations: number
               completed_operations: number
               expired_operations: number
-              cancelled_operations: number
               avg_duration_minutes: number
             }>`
               SELECT
                 COUNT(*) as total_operations,
                 COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_operations,
                 COUNT(CASE WHEN status = 'expired' THEN 1 END) as expired_operations,
-                COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_operations,
                 COALESCE(
                   AVG(EXTRACT(EPOCH FROM (closed_at - opened_at)) / 60)
                   FILTER (WHERE status = 'completed' AND closed_at IS NOT NULL),
@@ -490,7 +487,6 @@ export class OperationRepository extends Effect.Service<OperationRepository>()(
               total_operations: 0,
               completed_operations: 0,
               expired_operations: 0,
-              cancelled_operations: 0,
               avg_duration_minutes: 0
             }
           })

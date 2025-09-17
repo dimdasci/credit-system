@@ -40,13 +40,13 @@ export const TestOperations = {
     expires_at: "2025-03-01T10:00:00Z", // Already expired
     closed_at: null
   },
-  CANCELLED_OPERATION_1: {
+  COMPLETED_OPERATION_2: {
     operation_id: "44444444-5555-6666-7777-888888888888",
     user_id: TestUsers.USER_3,
     operation_type_code: "api_usage",
     workflow_id: "workflow-789",
     captured_rate: 0.025,
-    status: "cancelled" as const,
+    status: "completed" as const,
     opened_at: "2025-03-08T16:00:00Z",
     expires_at: "2025-03-08T17:00:00Z",
     closed_at: "2025-03-08T16:15:00Z"
@@ -57,5 +57,5 @@ export const TestOperationsArray: Array<Operation.Encoded> = [
   TestOperations.OPEN_OPERATION_1,
   TestOperations.COMPLETED_OPERATION_1,
   TestOperations.EXPIRED_OPERATION_1,
-  TestOperations.CANCELLED_OPERATION_1
+  TestOperations.COMPLETED_OPERATION_2
 ]

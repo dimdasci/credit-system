@@ -213,7 +213,6 @@ credit-cli adjustment apply --merchant=acme --user=user123 --amount=50 --reason=
 **Operation State Machine**:
 - `open` → `completed` (via Operation.RecordAndClose)
 - `open` → `expired` (via background cleanup job)  
-- `open` → `cancelled` (optional, for manual admin intervention)
 
 **Background Job Implementation**:
 ```sql

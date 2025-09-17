@@ -274,7 +274,6 @@ describe("OperationRepository", () => {
           expect(stats.total_operations).toBeGreaterThanOrEqual(0)
           expect(stats.completed_operations).toBeGreaterThanOrEqual(0)
           expect(stats.expired_operations).toBeGreaterThanOrEqual(0)
-          expect(stats.cancelled_operations).toBeGreaterThanOrEqual(0)
           expect(stats.avg_duration_minutes).toBeGreaterThanOrEqual(0)
         }).pipe(Effect.provide(TestLayer), Effect.runPromise))
     })
