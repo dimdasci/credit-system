@@ -1,13 +1,14 @@
 import { MerchantContext } from "@credit-system/shared"
 import * as SqlSchema from "@effect/sql/SqlSchema"
+import { DatabaseManager } from "@server/db/DatabaseManager.js"
+import { DatabaseManagerLive, PgLayerFactoryLive } from "@server/db/DatabaseManagerImpl.js"
+import { LedgerEntry } from "@server/domain/credit-ledger/LedgerEntry.js"
+import { Lot } from "@server/domain/credit-ledger/Lot.js"
+import type { Product } from "@server/domain/products/Product.js"
+import { InsufficientBalance, InvalidRequest, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
+import { createMonthDate } from "@server/domain/shared/MonthDate.js"
 import { Effect, Layer, Schema } from "effect"
 import { randomUUID } from "node:crypto"
-import { DatabaseManager } from "../../db/DatabaseManager.js"
-import { DatabaseManagerLive, PgLayerFactoryLive } from "../../db/DatabaseManagerImpl.js"
-import { LedgerEntry } from "../../domain/credit-ledger/LedgerEntry.js"
-import { Lot } from "../../domain/credit-ledger/Lot.js"
-import type { Product } from "../../domain/products/Product.js"
-import { createMonthDate } from "../../domain/shared/MonthDate.js"
 
 // Query options for ledger history and lot queries
 export interface LedgerQueryOptions {
@@ -55,6 +56,56 @@ export interface DebitRecordContext {
 export interface TargetLotReference {
   lot_id: string
   lot_month: string
+}
+
+// Database error mapping utility
+const mapDatabaseError = (error: unknown): ServiceUnavailable => {
+  if (error && typeof error === "object") {
+    const errorObj = error as { code?: string; message?: string; name?: string }
+
+    // PostgreSQL connection errors
+    if (errorObj.code === "ECONNREFUSED" || errorObj.code === "ENOTFOUND") {
+      return new ServiceUnavailable({
+        service: "LedgerRepository",
+        reason: "database_connection_failure",
+        retry_after_seconds: 5
+      })
+    }
+
+    // PostgreSQL timeout errors
+    if (errorObj.code === "ETIMEOUT" || errorObj.message?.includes("timeout")) {
+      return new ServiceUnavailable({
+        service: "LedgerRepository",
+        reason: "transaction_timeout",
+        retry_after_seconds: 10
+      })
+    }
+
+    // PostgreSQL unique constraint violations (concurrent updates)
+    if (errorObj.code === "23505" || errorObj.code === "40001") {
+      return new ServiceUnavailable({
+        service: "LedgerRepository",
+        reason: "concurrent_update_conflict",
+        retry_after_seconds: 2
+      })
+    }
+
+    // Resource exhaustion (connection pool, memory)
+    if (errorObj.code === "53300" || errorObj.code === "53200") {
+      return new ServiceUnavailable({
+        service: "LedgerRepository",
+        reason: "resource_exhaustion",
+        retry_after_seconds: 15
+      })
+    }
+  }
+
+  // Default fallback for unknown database errors
+  return new ServiceUnavailable({
+    service: "LedgerRepository",
+    reason: "database_connection_failure",
+    retry_after_seconds: 5
+  })
 }
 
 export class LedgerRepository extends Effect.Service<LedgerRepository>()(
@@ -200,30 +251,92 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
         getLedgerHistory: (user_id: string, options?: LedgerQueryOptions) => _getLedgerHistory({ user_id, options }),
 
         // Balance calculations across partitions
-        getUserBalance: (user_id: string) =>
+        getUserBalance: (user_id: string): Effect.Effect<number, InvalidRequest | ServiceUnavailable> =>
           Effect.gen(function*() {
+            // Validate input parameters
+            if (!user_id || user_id.trim().length === 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "user_id",
+                  reason: "invalid_parameters",
+                  details: "User ID cannot be empty"
+                })
+              )
+            }
+
             const sql = yield* db.getConnection(merchantContext.merchantId)
+              .pipe(Effect.mapError(mapDatabaseError))
+
             const result = yield* sql<{ balance: number }>`
               SELECT COALESCE(SUM(amount), 0) as balance
               FROM ledger_entries
               WHERE user_id = ${user_id}
-            `
+            `.pipe(Effect.mapError(mapDatabaseError))
+
             return result[0]?.balance || 0
           }),
 
-        getLotBalance: (lot_id: string, lot_month: string) =>
+        getLotBalance: (
+          lot_id: string,
+          lot_month: string
+        ): Effect.Effect<number, InvalidRequest | ServiceUnavailable> =>
           Effect.gen(function*() {
+            // Validate input parameters
+            if (!lot_id || !lot_month) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "lot_reference",
+                  reason: "invalid_parameters",
+                  details: "Both lot_id and lot_month are required"
+                })
+              )
+            }
+
+            if (!/^\d{4}-\d{2}-01$/.test(lot_month)) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "lot_month",
+                  reason: "format_violation",
+                  details: "Lot month must be in YYYY-MM-01 format"
+                })
+              )
+            }
+
             const sql = yield* db.getConnection(merchantContext.merchantId)
+              .pipe(Effect.mapError(mapDatabaseError))
+
             const result = yield* sql<{ balance: number }>`
               SELECT COALESCE(SUM(amount), 0) as balance
               FROM ledger_entries
               WHERE lot_id = ${lot_id} AND lot_month = ${lot_month}
-            `
+            `.pipe(Effect.mapError(mapDatabaseError))
+
             return result[0]?.balance || 0
           }),
 
         // Lot management with optimized read models
-        getActiveLots: (user_id: string, at_time: Date = new Date()) => fetchActiveLotSummaries(user_id, at_time),
+        getActiveLots: (
+          user_id: string,
+          at_time: Date = new Date()
+        ): Effect.Effect<Array<LotSummary>, InvalidRequest | ServiceUnavailable> =>
+          Effect.gen(function*() {
+            // Validate input parameters
+            if (!user_id || user_id.trim().length === 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "user_id",
+                  reason: "invalid_parameters",
+                  details: "User ID cannot be empty"
+                })
+              )
+            }
+
+            const result = yield* fetchActiveLotSummaries(user_id, at_time)
+              .pipe(Effect.mapError(mapDatabaseError))
+
+            // Convert readonly array to mutable array
+            return [...result]
+          }),
 
         getExpiredLots: (user_id: string, at_time: Date = new Date()) =>
           Effect.gen(function*() {
@@ -282,15 +395,78 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
           ),
 
         // FIFO consumption support
-        getOldestActiveLot: (user_id: string, at_time: Date = new Date()) =>
+        getOldestActiveLot: (
+          user_id: string,
+          at_time: Date = new Date()
+        ): Effect.Effect<LotSummary | null, InvalidRequest | InsufficientBalance | ServiceUnavailable> =>
           Effect.gen(function*() {
+            // Validate input parameters
+            if (!user_id || user_id.trim().length === 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "user_id",
+                  reason: "invalid_parameters",
+                  details: "User ID cannot be empty"
+                })
+              )
+            }
+
             const result = yield* fetchActiveLotSummaries(user_id, at_time)
+              .pipe(Effect.mapError(mapDatabaseError))
+
             return result[0] ?? null
           }),
 
-        selectFIFOLots: (user_id: string, required_credits: number, at_time: Date = new Date()) =>
+        selectFIFOLots: (
+          user_id: string,
+          required_credits: number,
+          at_time: Date = new Date()
+        ): Effect.Effect<Array<Lot>, InsufficientBalance | InvalidRequest | ServiceUnavailable> =>
           Effect.gen(function*() {
+            // Validate input parameters
+            if (required_credits <= 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "required_credits",
+                  reason: "invalid_amount",
+                  details: "Must be positive"
+                })
+              )
+            }
+
+            if (!user_id || user_id.trim().length === 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "user_id",
+                  reason: "invalid_parameters",
+                  details: "User ID cannot be empty"
+                })
+              )
+            }
+
             const summaries = yield* fetchActiveLotSummaries(user_id, at_time)
+              .pipe(Effect.mapError(mapDatabaseError))
+
+            // Check if user has any active lots for consumption
+            if (summaries.length === 0) {
+              const currentBalance = yield* Effect.gen(function*() {
+                const sql = yield* db.getConnection(merchantContext.merchantId)
+                const result = yield* sql<{ balance: number }>`
+                  SELECT COALESCE(SUM(amount), 0) as balance
+                  FROM ledger_entries
+                  WHERE user_id = ${user_id}
+                `
+                return result[0]?.balance || 0
+              }).pipe(Effect.mapError(mapDatabaseError))
+
+              return yield* Effect.fail(
+                new InsufficientBalance({
+                  user_id,
+                  current_balance: currentBalance,
+                  reason: "no_active_lots"
+                })
+              )
+            }
 
             let remaining = required_credits
             const selected: Array<Lot> = []
@@ -320,15 +496,58 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
               remaining -= summary.current_balance
             }
 
-            return selected
+            return [...selected]
           }),
 
         createCreditLot: (
           user_id: string,
           product: Product,
           context: CreditIssuanceContext
-        ): Effect.Effect<Lot, unknown> =>
+        ): Effect.Effect<Lot, InvalidRequest | ServiceUnavailable> =>
           Effect.gen(function*() {
+            // Validate input parameters
+            if (!user_id || user_id.trim().length === 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "user_id",
+                  reason: "invalid_parameters",
+                  details: "User ID cannot be empty"
+                })
+              )
+            }
+
+            if (!product.product_code || product.credits <= 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "product",
+                  reason: "invalid_parameters",
+                  details: "Product must have valid code and positive credits"
+                })
+              )
+            }
+
+            if (!context.operation_type) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "context.operation_type",
+                  reason: "invalid_parameters",
+                  details: "Operation type is required"
+                })
+              )
+            }
+
+            if (
+              context.resource_amount !== undefined && context.resource_amount !== null && context.resource_amount < 0
+            ) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "context.resource_amount",
+                  reason: "invalid_amount",
+                  details: "Resource amount cannot be negative"
+                })
+              )
+            }
+
             const entryId = randomUUID()
             const createdAt = context.created_at ?? context.settled_at ?? new Date()
             const lotMonth = createMonthDate(createdAt)
@@ -354,6 +573,7 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
             })
 
             yield* _createLedgerEntry(entry)
+              .pipe(Effect.mapError(mapDatabaseError))
 
             return Schema.decodeSync(Lot)({
               entry_id: entryId,
@@ -371,8 +591,61 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
           user_id: string,
           context: DebitRecordContext,
           target: TargetLotReference
-        ): Effect.Effect<LedgerEntry, unknown> =>
+        ): Effect.Effect<LedgerEntry, InvalidRequest | ServiceUnavailable> =>
           Effect.gen(function*() {
+            // Validate input parameters
+            if (!user_id || user_id.trim().length === 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "user_id",
+                  reason: "invalid_parameters",
+                  details: "User ID cannot be empty"
+                })
+              )
+            }
+
+            if (!context.operation_type) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "context.operation_type",
+                  reason: "invalid_parameters",
+                  details: "Operation type is required"
+                })
+              )
+            }
+
+            if (context.amount === 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "context.amount",
+                  reason: "invalid_amount",
+                  details: "Debit amount cannot be zero"
+                })
+              )
+            }
+
+            if (!target.lot_id || !target.lot_month) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "target",
+                  reason: "invalid_parameters",
+                  details: "Target lot reference must include lot_id and lot_month"
+                })
+              )
+            }
+
+            if (
+              context.resource_amount !== undefined && context.resource_amount !== null && context.resource_amount < 0
+            ) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "context.resource_amount",
+                  reason: "invalid_amount",
+                  details: "Resource amount cannot be negative"
+                })
+              )
+            }
+
             const entryId = randomUUID()
             const createdAt = context.created_at ?? new Date()
             const createdMonth = createMonthDate(createdAt)
@@ -397,6 +670,8 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
             })
 
             yield* _createLedgerEntry(entry)
+              .pipe(Effect.mapError(mapDatabaseError))
+
             return entry
           }),
 
