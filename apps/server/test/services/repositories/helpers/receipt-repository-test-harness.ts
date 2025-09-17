@@ -5,6 +5,7 @@ import { Effect, Layer } from "effect"
 
 export interface MockReceiptQueryContext {
   lastInsertValues: Array<unknown> | null
+  lastQueryText: string | null
   lastQueryIncludesLimit: boolean
   lastQueryIncludesDateFilter: boolean
   lastQueryIncludesYear: boolean
@@ -15,6 +16,7 @@ export interface MockReceiptQueryContext {
 
 const initialContext = (): MockReceiptQueryContext => ({
   lastInsertValues: null,
+  lastQueryText: null,
   lastQueryIncludesLimit: false,
   lastQueryIncludesDateFilter: false,
   lastQueryIncludesYear: false,
@@ -42,9 +44,14 @@ const mockSqlClient = {
   raw: (strings: TemplateStringsArray, ...values: Array<unknown>) => {
     // Track query characteristics
     const query = strings.join("?")
+    mockQueryContext.lastQueryText = query
     mockQueryContext.lastQueryIncludesLimit = query.toUpperCase().includes("LIMIT")
     mockQueryContext.lastQueryIncludesDateFilter = query.includes("issued_at")
-    mockQueryContext.lastQueryIncludesYear = values.some((v) => typeof v === "number" && v >= 2020 && v <= 2030)
+
+    // Check for year in values or query text
+    mockQueryContext.lastQueryIncludesYear = values.some((v) => typeof v === "number" && v >= 2020 && v <= 2030) ||
+      /20[2-3][0-9]/.test(query) ||
+      strings.some(s => /20[2-3][0-9]/.test(s))
 
     // Check for INSERT operations
     if (query.toUpperCase().includes("INSERT")) {
@@ -58,6 +65,11 @@ const mockSqlClient = {
       }
 
       return attachTemplate(Effect.void)
+    }
+
+    // Check for sequence operations (DO $$ blocks and CREATE SEQUENCE)
+    if (query.includes("DO $$") || query.includes("CREATE SEQUENCE") || query.includes("nextval")) {
+      return attachTemplate(Effect.succeed(mockQueryContext.nextSelectResult))
     }
 
     // Simulate connection errors if configured
@@ -94,13 +106,14 @@ const MockDatabaseManager = Layer.succeed(DatabaseManager, {
   getConnection: (_merchantId: string) => Effect.succeed(mockSqlTemplate as any)
 })
 
-const MockMerchantContext = Layer.succeed(MerchantContext, {
+const MockMerchantContextLayer = Layer.succeed(MerchantContext, {
   merchantId: "TEST_MERCHANT"
 })
 
-const MockReceiptRepository = Layer.provide(
-  ReceiptRepositoryService.Default,
-  Layer.mergeAll(MockDatabaseManager, MockMerchantContext)
+export const TestLayer = Layer.provide(
+  Layer.provide(
+    ReceiptRepositoryService.DefaultWithoutDependencies,
+    MockDatabaseManager
+  ),
+  MockMerchantContextLayer
 )
-
-export const TestLayer = MockReceiptRepository

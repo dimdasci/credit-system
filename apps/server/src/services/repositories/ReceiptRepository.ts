@@ -4,7 +4,7 @@ import { DatabaseManager } from "@server/db/DatabaseManager.js"
 import { DatabaseManagerLive, PgLayerFactoryLive } from "@server/db/DatabaseManagerImpl.js"
 import { Receipt } from "@server/domain/receipts/Receipt.js"
 import type { DomainError } from "@server/domain/shared/DomainErrors.js"
-import { ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
+import { InvalidRequest, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
 import { Effect, Layer, Schema } from "effect"
 
 // Query options for receipt history
@@ -33,7 +33,7 @@ export interface ReceiptRepositoryContract {
   getUserReceiptCount: (user_id: string) => Effect.Effect<number, DomainError>
 
   // Receipt numbering (merchant-scoped sequences)
-  getNextReceiptNumber: (merchant_id: string, year?: number) => Effect.Effect<string, DomainError>
+  getNextReceiptNumber: (seriesPrefix: string, year?: number) => Effect.Effect<string, DomainError>
   getReceiptsByNumberRange: (start_number: string, end_number: string) => Effect.Effect<Array<Receipt>, DomainError>
 
   // Tax and compliance
@@ -291,32 +291,62 @@ export class ReceiptRepository extends Effect.Service<ReceiptRepository>()(
           }).pipe(Effect.mapError(mapDatabaseError)),
 
         // Receipt numbering (merchant-scoped sequences)
-        getNextReceiptNumber: (merchant_id: string, year?: number) =>
+        getNextReceiptNumber: (seriesPrefix: string, year?: number) =>
           Effect.gen(function*() {
-            const sql = yield* db.getConnection(merchantContext.merchantId)
-            const currentYear = year ?? new Date().getFullYear()
+            const prefixInput = seriesPrefix?.trim()
 
-            // Get the next sequence number for this merchant and year
-            const yearPrefix = `R-${merchant_id.substring(0, 2).toUpperCase()}-${currentYear}-`
-
-            const result = yield* sql<{ next_number: string }>`
-              WITH max_number AS (
-                SELECT COALESCE(
-                  MAX(
-                    CAST(
-                      RIGHT(receipt_number, 4) AS INTEGER
-                    )
-                  ), 0
-                ) as max_seq
-                FROM receipts
-                WHERE receipt_number LIKE ${yearPrefix + "%"}
+            if (!prefixInput || prefixInput.length === 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "receipt_series_prefix",
+                  reason: "invalid_parameters",
+                  details: "Receipt series prefix is required"
+                })
               )
-              SELECT ${yearPrefix} || LPAD(CAST(max_seq + 1 AS TEXT), 4, '0') as next_number
-              FROM max_number
-            `
+            }
 
-            return result[0]?.next_number ?? `${yearPrefix}0001`
-          }).pipe(Effect.mapError(mapDatabaseError)),
+            const prefix = prefixInput.toUpperCase()
+            const currentYear = year ?? new Date().getFullYear()
+            const sql = yield* db.getConnection(merchantContext.merchantId)
+
+            const sequenceToken = prefix.replace(/[^A-Z0-9]/g, "_").toLowerCase()
+
+            if (sequenceToken.length === 0) {
+              return yield* Effect.fail(
+                new InvalidRequest({
+                  field: "receipt_series_prefix",
+                  reason: "format_violation",
+                  details: "Prefix must contain alphanumeric characters"
+                })
+              )
+            }
+
+            const sequenceName = `receipt_seq_${sequenceToken}_${currentYear}`
+
+            yield* sql`
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1
+                  FROM pg_class
+                  WHERE relkind = 'S'
+                    AND relname = '${sequenceName}'
+                ) THEN
+                  EXECUTE 'CREATE SEQUENCE ${sequenceName}';
+                END IF;
+              END $$;
+            `.pipe(Effect.mapError(mapDatabaseError))
+
+            const result = yield* sql<{ next_val: string | number }>`
+              SELECT nextval('${sequenceName}') as next_val
+            `.pipe(Effect.mapError(mapDatabaseError))
+
+            const nextValueRaw = result[0]?.next_val
+            const nextValue = typeof nextValueRaw === "string" ? Number(nextValueRaw) : nextValueRaw ?? 1
+            const paddedSequence = String(nextValue).padStart(4, "0")
+
+            return `${prefix}-${currentYear}-${paddedSequence}`
+          }),
 
         getReceiptsByNumberRange: (start_number: string, end_number: string) =>
           Effect.gen(function*() {
@@ -352,49 +382,109 @@ export class ReceiptRepository extends Effect.Service<ReceiptRepository>()(
             const sql = yield* db.getConnection(merchantContext.merchantId)
 
             const result = yield* sql<{
-              total_receipts: number
-              total_amount: number
-              currencies: Array<{ currency: string; total: number }>
-              tax_breakdown: Array<{ tax_type: string; total: number }>
+              total_receipts: number | string | null
+              total_amount: number | string | null
+              currencies: unknown
+              tax_breakdown: unknown
             }>`
-              WITH receipt_amounts AS (
+              WITH period_receipts AS (
                 SELECT
-                  CAST(purchase_snapshot->>'amount' AS DECIMAL) as amount,
-                  purchase_snapshot->>'currency' as currency,
-                  merchant_config_snapshot->>'tax_regime' as tax_type
+                  purchase_snapshot,
+                  merchant_config_snapshot
                 FROM receipts
                 WHERE issued_at >= ${fromDate}
                   AND issued_at <= ${toDate}
-                  AND purchase_snapshot->>'amount' IS NOT NULL
+              ),
+              totals AS (
+                SELECT
+                  COUNT(*) as total_receipts,
+                  COALESCE(SUM((purchase_snapshot->>'amount')::decimal), 0) as total_amount
+                FROM period_receipts
+                WHERE purchase_snapshot->>'amount' IS NOT NULL
               ),
               currency_totals AS (
-                SELECT currency, SUM(amount) as total
-                FROM receipt_amounts
-                WHERE currency IS NOT NULL
-                GROUP BY currency
+                SELECT
+                  purchase_snapshot->>'currency' as currency,
+                  SUM((purchase_snapshot->>'amount')::decimal) as total
+                FROM period_receipts
+                WHERE purchase_snapshot->>'currency' IS NOT NULL
+                  AND purchase_snapshot->>'amount' IS NOT NULL
+                GROUP BY purchase_snapshot->>'currency'
+              ),
+              tax_items AS (
+                SELECT
+                  COALESCE(tax_element->>'type', merchant_config_snapshot->>'tax_regime') as tax_type,
+                  COALESCE((tax_element->>'amount')::decimal, 0) as amount
+                FROM period_receipts
+                LEFT JOIN LATERAL jsonb_array_elements(purchase_snapshot->'tax_breakdown') AS tax_element ON TRUE
               ),
               tax_totals AS (
-                SELECT tax_type, SUM(amount * 0.20) as total
-                FROM receipt_amounts
+                SELECT
+                  tax_type,
+                  SUM(amount) as total
+                FROM tax_items
                 WHERE tax_type IS NOT NULL
                 GROUP BY tax_type
               )
               SELECT
-                (SELECT COUNT(*) FROM receipts
-                 WHERE issued_at >= ${fromDate} AND issued_at <= ${toDate}) as total_receipts,
-                (SELECT COALESCE(SUM(amount), 0) FROM receipt_amounts) as total_amount,
-                (SELECT COALESCE(array_agg(row_to_json(ct)), ARRAY[]::json[])
-                 FROM currency_totals ct) as currencies,
-                (SELECT COALESCE(array_agg(row_to_json(tt)), ARRAY[]::json[])
-                 FROM tax_totals tt) as tax_breakdown
+                (SELECT total_receipts FROM totals) as total_receipts,
+                (SELECT total_amount FROM totals) as total_amount,
+                COALESCE(
+                  (SELECT jsonb_agg(jsonb_build_object('currency', currency, 'total', total)) FROM currency_totals),
+                  '[]'::jsonb
+                ) as currencies,
+                COALESCE(
+                  (SELECT jsonb_agg(jsonb_build_object('tax_type', tax_type, 'total', total)) FROM tax_totals),
+                  '[]'::jsonb
+                ) as tax_breakdown
             `
 
             const row = result[0]
+
+            const toNumber = (value: unknown): number => {
+              if (typeof value === "number") {
+                return value
+              }
+              if (typeof value === "string" && value.trim().length > 0) {
+                const parsed = Number(value)
+                return Number.isNaN(parsed) ? 0 : parsed
+              }
+              return 0
+            }
+
+            const toArray = (value: unknown): Array<any> => {
+              if (!value) {
+                return []
+              }
+              if (Array.isArray(value)) {
+                return value
+              }
+              if (typeof value === "string") {
+                try {
+                  const parsed = JSON.parse(value)
+                  return Array.isArray(parsed) ? parsed : []
+                } catch {
+                  return []
+                }
+              }
+              return []
+            }
+
+            const currencies = toArray(row?.currencies).map((entry) => ({
+              currency: typeof entry?.currency === "string" ? entry.currency : "",
+              total: toNumber(entry?.total)
+            })).filter((entry) => entry.currency.length > 0)
+
+            const taxBreakdown = toArray(row?.tax_breakdown).map((entry) => ({
+              tax_type: typeof entry?.tax_type === "string" ? entry.tax_type : "",
+              total: toNumber(entry?.total)
+            })).filter((entry) => entry.tax_type.length > 0)
+
             return {
-              total_receipts: row?.total_receipts ?? 0,
-              total_amount: row?.total_amount ?? 0,
-              currencies: (row?.currencies as any) ?? [],
-              tax_breakdown: (row?.tax_breakdown as any) ?? []
+              total_receipts: toNumber(row?.total_receipts),
+              total_amount: toNumber(row?.total_amount),
+              currencies,
+              tax_breakdown: taxBreakdown
             }
           }).pipe(Effect.mapError(mapDatabaseError)),
 

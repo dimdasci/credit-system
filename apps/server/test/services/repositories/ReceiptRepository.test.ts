@@ -177,27 +177,29 @@ describe("ReceiptRepository", () => {
   })
 
   describe("getNextReceiptNumber", () => {
-    it("generates sequential receipt number for merchant", () =>
+    it("generates sequential receipt number using provided prefix", () =>
       Effect.gen(function*() {
         const repo = yield* ReceiptRepository
 
-        mockQueryContext.nextSelectResult = [{ next_number: "R-AM-2025-0042" }]
+        mockQueryContext.nextSelectResult = [{ next_val: 42 }]
 
-        const result = yield* repo.getNextReceiptNumber("merchant123")
+        const currentYear = new Date().getFullYear()
 
-        expect(result).toBe("R-AM-2025-0042")
+        const result = yield* repo.getNextReceiptNumber("R-AM")
+
+        expect(result).toBe(`R-AM-${currentYear}-0042`)
       }).pipe(Effect.provide(TestLayer), Effect.runPromise))
 
     it("handles year parameter", () =>
       Effect.gen(function*() {
         const repo = yield* ReceiptRepository
 
-        mockQueryContext.nextSelectResult = [{ next_number: "R-AM-2024-0001" }]
+        mockQueryContext.nextSelectResult = [{ next_val: 1 }]
 
-        const result = yield* repo.getNextReceiptNumber("merchant123", 2024)
+        const result = yield* repo.getNextReceiptNumber("R-AM", 2024)
 
         expect(result).toBe("R-AM-2024-0001")
-        expect(mockQueryContext.lastQueryIncludesYear).toBe(true)
+        expect(mockQueryContext.lastQueryText?.includes("2024")).toBe(true)
       }).pipe(Effect.provide(TestLayer), Effect.runPromise))
   })
 
@@ -232,15 +234,15 @@ describe("ReceiptRepository", () => {
   })
 
   describe("getReceiptTotalsForPeriod", () => {
-    it("returns aggregated totals for period", () =>
+    it("returns aggregated totals for period using tax snapshot data", () =>
       Effect.gen(function*() {
         const repo = yield* ReceiptRepository
 
         const expectedTotals = {
-          total_receipts: 10,
-          total_amount: 299.90,
-          currencies: [{ currency: "USD", total: 299.90 }],
-          tax_breakdown: [{ tax_type: "VAT", total: 50.00 }]
+          total_receipts: "10",
+          total_amount: "299.90",
+          currencies: JSON.stringify([{ currency: "USD", total: "299.90" }]),
+          tax_breakdown: JSON.stringify([{ tax_type: "turnover", total: "0.00" }])
         }
 
         mockQueryContext.nextSelectResult = [expectedTotals]
@@ -252,7 +254,31 @@ describe("ReceiptRepository", () => {
         expect(result.total_receipts).toBe(10)
         expect(result.total_amount).toBe(299.90)
         expect(result.currencies).toHaveLength(1)
-        expect(result.tax_breakdown).toHaveLength(1)
+        expect(result.currencies[0]).toEqual({ currency: "USD", total: 299.90 })
+        expect(result.tax_breakdown).toEqual([{ tax_type: "turnover", total: 0 }])
+      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
+
+    it("returns zero tax breakdown when no tax entries", () =>
+      Effect.gen(function*() {
+        const repo = yield* ReceiptRepository
+
+        const expectedTotals = {
+          total_receipts: 0,
+          total_amount: 0,
+          currencies: [],
+          tax_breakdown: []
+        }
+
+        mockQueryContext.nextSelectResult = [expectedTotals]
+
+        const fromDate = new Date("2025-04-01")
+        const toDate = new Date("2025-04-30")
+        const result = yield* repo.getReceiptTotalsForPeriod(fromDate, toDate)
+
+        expect(result.total_receipts).toBe(0)
+        expect(result.total_amount).toBe(0)
+        expect(result.currencies).toEqual([])
+        expect(result.tax_breakdown).toEqual([])
       }).pipe(Effect.provide(TestLayer), Effect.runPromise))
   })
 
