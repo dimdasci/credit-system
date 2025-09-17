@@ -42,19 +42,36 @@ const attachTemplate = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
 const mockSqlClient = {
   [Symbol.for("sql-template")]: true,
   raw: (strings: TemplateStringsArray, ...values: Array<unknown>) => {
-    // Track query characteristics
-    const query = strings.join("?")
-    mockQueryContext.lastQueryText = query
-    mockQueryContext.lastQueryIncludesLimit = query.toUpperCase().includes("LIMIT")
-    mockQueryContext.lastQueryIncludesDateFilter = query.includes("issued_at")
+    // Track query characteristics - build the full query including fragments
+    let fullQuery = strings[0] || ""
+    for (let i = 0; i < values.length; i++) {
+      const value = values[i]
 
-    // Check for year in values or query text
-    mockQueryContext.lastQueryIncludesYear = values.some((v) => typeof v === "number" && v >= 2020 && v <= 2030) ||
-      /20[2-3][0-9]/.test(query) ||
-      strings.some(s => /20[2-3][0-9]/.test(s))
+      // Handle SQL fragments (they might contain LIMIT, etc.)
+      if (value && typeof value === "object" && "strings" in (value as any)) {
+        const fragment = (value as any).strings?.[0] || ""
+        fullQuery += fragment
+      } else {
+        fullQuery += String(value)
+      }
+
+      fullQuery += strings[i + 1] || ""
+    }
+
+    mockQueryContext.lastQueryText = fullQuery
+    mockQueryContext.lastQueryIncludesLimit = fullQuery.toUpperCase().includes("LIMIT") ||
+      values.some(v => v && typeof v === "object" && (v as any).strings?.some((s: string) => s.toUpperCase().includes("LIMIT")))
+    mockQueryContext.lastQueryIncludesDateFilter = fullQuery.includes("issued_at")
+
+    // Enhanced year detection - check values, query text, and fragment strings
+    mockQueryContext.lastQueryIncludesYear =
+      values.some((v) => typeof v === "number" && v >= 2020 && v <= 2030) ||
+      /20[2-3][0-9]/.test(fullQuery) ||
+      strings.some(s => /20[2-3][0-9]/.test(s)) ||
+      values.some(v => v && typeof v === "object" && (v as any).strings?.some((s: string) => /20[2-3][0-9]/.test(s)))
 
     // Check for INSERT operations
-    if (query.toUpperCase().includes("INSERT")) {
+    if (fullQuery.toUpperCase().includes("INSERT")) {
       mockQueryContext.lastInsertValues = values
 
       // Simulate constraint violation if configured
@@ -68,7 +85,7 @@ const mockSqlClient = {
     }
 
     // Check for sequence operations (DO $$ blocks and CREATE SEQUENCE)
-    if (query.includes("DO $$") || query.includes("CREATE SEQUENCE") || query.includes("nextval")) {
+    if (fullQuery.includes("DO $$") || fullQuery.includes("CREATE SEQUENCE") || fullQuery.includes("nextval")) {
       return attachTemplate(Effect.succeed(mockQueryContext.nextSelectResult))
     }
 
