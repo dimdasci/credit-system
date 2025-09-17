@@ -295,6 +295,28 @@ describe("ReceiptRepository", () => {
         expect(result.tax_breakdown).toEqual([{ tax_type: "turnover", total: 0 }])
       }).pipe(Effect.provide(TestLayer), Effect.runPromise))
 
+    it("handles receipts without tax breakdown", () =>
+      Effect.gen(function*() {
+        const repo = yield* ReceiptRepository
+
+        const expectedTotals = {
+          total_receipts: "2",
+          total_amount: "100.00",
+          currencies: JSON.stringify([{ currency: "AMD", total: "100.00" }]),
+          tax_breakdown: JSON.stringify([])
+        }
+
+        mockQueryContext.nextSelectResult = [expectedTotals]
+
+        const fromDate = new Date("2025-05-01")
+        const toDate = new Date("2025-05-31")
+        const result = yield* repo.getReceiptTotalsForPeriod(fromDate, toDate)
+
+        expect(result.total_receipts).toBe(2)
+        expect(result.total_amount).toBe(100)
+        expect(result.tax_breakdown).toEqual([])
+      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
+
     it("returns zero tax breakdown when no tax entries", () =>
       Effect.gen(function*() {
         const repo = yield* ReceiptRepository

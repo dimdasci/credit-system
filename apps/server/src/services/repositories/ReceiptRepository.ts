@@ -416,7 +416,9 @@ export class ReceiptRepository extends Effect.Service<ReceiptRepository>()(
                   COALESCE(tax_element->>'type', merchant_config_snapshot->>'tax_regime') as tax_type,
                   COALESCE((tax_element->>'amount')::decimal, 0) as amount
                 FROM period_receipts
-                LEFT JOIN LATERAL jsonb_array_elements(purchase_snapshot->'tax_breakdown') AS tax_element ON TRUE
+                LEFT JOIN LATERAL jsonb_array_elements(
+                  COALESCE(purchase_snapshot->'tax_breakdown', '[]'::jsonb)
+                ) AS tax_element ON TRUE
               ),
               tax_totals AS (
                 SELECT
