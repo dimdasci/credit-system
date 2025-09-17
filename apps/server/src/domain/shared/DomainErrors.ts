@@ -119,7 +119,8 @@ export class InvalidRequest extends Schema.TaggedError<InvalidRequest>("InvalidR
       "invalid_amount",
       "workflow_id_mismatch",
       "invalid_parameters",
-      "format_violation"
+      "format_violation",
+      "not_found"
     ),
     details: Schema.optional(Schema.String)
   }
@@ -192,7 +193,8 @@ export class ServiceUnavailable extends Schema.TaggedError<ServiceUnavailable>("
       "transaction_timeout",
       "concurrent_update_conflict",
       "external_service_down",
-      "resource_exhaustion"
+      "resource_exhaustion",
+      "data_corruption"
     ),
     retry_after_seconds: Schema.optional(Schema.Number)
   }
