@@ -15,12 +15,15 @@ const mockMutations = {
 
 const referenceNow = new Date("2025-03-01T00:00:00Z")
 
-const TestPriceRows: Record<string, Array<{
-  country: string
-  currency: string
-  amount: number
-  vat_info: Record<string, unknown> | null
-}>> = {
+const TestPriceRows: Record<
+  string,
+  Array<{
+    country: string
+    currency: string
+    amount: number
+    vat_info: Record<string, unknown> | null
+  }>
+> = {
   TEST_BASIC: [
     { country: "US", currency: "USD", amount: 19.99, vat_info: { rate: 0.2 } },
     { country: "*", currency: "USD", amount: 20.99, vat_info: null }
