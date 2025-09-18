@@ -196,7 +196,7 @@ CREATE TABLE operations (
     operation_type_code text NOT NULL REFERENCES operation_types(operation_code),
     workflow_id         text,
     captured_rate       decimal(19,6) NOT NULL CHECK (captured_rate > 0),
-    status              text NOT NULL CHECK (status IN ('open', 'completed', 'expired', 'cancelled')),
+    status              text NOT NULL CHECK (status IN ('open', 'completed', 'expired')),
     opened_at           timestamptz NOT NULL DEFAULT now(),
     expires_at          timestamptz NOT NULL,
     closed_at           timestamptz,
@@ -756,7 +756,7 @@ erDiagram
         string operation_type_code FK
         string workflow_id "nullable"
         decimal captured_rate
-        string status "open|completed|expired|cancelled"
+        string status "open|completed|expired"
         timestamptz opened_at
         timestamptz expires_at
         timestamptz closed_at "nullable"

@@ -2,7 +2,7 @@ import { UserId } from "@server/domain/shared/UserId.js"
 import { Option, Schema } from "effect"
 
 // Operation status enumeration matching database constraints
-export const OperationStatus = Schema.Literal("open", "completed", "expired", "cancelled")
+export const OperationStatus = Schema.Literal("open", "completed", "expired")
 
 // Operation entity for two-phase credit consumption protocol
 export class Operation extends Schema.Class<Operation>("Operation")({

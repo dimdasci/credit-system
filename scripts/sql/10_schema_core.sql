@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS operations (
   operation_type_code text NOT NULL REFERENCES operation_types(operation_code),
   workflow_id         text,
   captured_rate       decimal(19,6) NOT NULL CHECK (captured_rate > 0),
-  status              text NOT NULL CHECK (status IN ('open','completed','expired','cancelled')),
+  status              text NOT NULL CHECK (status IN ('open','completed','expired')),
   opened_at           timestamptz NOT NULL DEFAULT now(),
   expires_at          timestamptz NOT NULL,
   closed_at           timestamptz,

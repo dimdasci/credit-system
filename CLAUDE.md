@@ -36,6 +36,39 @@ Effect.gen(function* (_) {
 })
 ```
 
+**SQL Construction**: Use Effect SQL's native fragment system for dynamic queries. NEVER hand-roll TemplateStringsArray objects.
+
+```typescript
+// ❌ Forbidden - fake TemplateStringsArray
+const result = yield* sql(Object.assign([query], {raw: [query]}), ...params)
+
+// ✅ Correct - conditional SQL fragments (like LedgerRepository)
+const statusFilter = opts.status ? sql`AND status = ${opts.status}` : sql``
+const typeFilter = opts.type ? sql`AND type = ${opts.type}` : sql``
+const limitClause = typeof opts.limit === "number" ? sql`LIMIT ${opts.limit}` : sql``
+
+const result = yield* sql`
+  SELECT * FROM table
+  WHERE user_id = ${userId}
+  ${statusFilter}
+  ${typeFilter}
+  ${limitClause}
+`
+```
+
+**Test Harness Pattern**: When SQL fragments don't work in tests, implement `attachTemplate` to decorate Effect objects with template metadata:
+
+```typescript
+const attachTemplate = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+  if (typeof effect === "object" && effect !== null) {
+    (effect as any).strings = strings
+    (effect as any).values = values
+  }
+  return effect
+}
+// Use: return attachTemplate(Effect.succeed(data))
+```
+
 ## Repository
 
 Project repository https://github.com/dimdasci/credit-system/. Use MCP tools to work with issues.
