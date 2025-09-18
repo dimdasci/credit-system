@@ -34,6 +34,8 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
             return yield* sql`
               SELECT * FROM products 
               WHERE product_code = ${code}
+              AND effective_at <= NOW()
+              AND (archived_at IS NULL OR archived_at > NOW())
               LIMIT 1
             `
           })
@@ -49,7 +51,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
               SELECT * FROM products 
               WHERE effective_at <= NOW() 
               AND archived_at IS NULL
-              ORDER BY created_at DESC
+              ORDER BY effective_at DESC, product_code ASC
             `
           })
       })
@@ -65,7 +67,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
               WHERE effective_at <= NOW() 
               AND archived_at IS NULL
               AND distribution = 'sellable'
-              ORDER BY created_at DESC
+              ORDER BY effective_at DESC, product_code ASC
             `
           })
       })
@@ -87,7 +89,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
             return yield* sql`
               UPDATE products 
               SET archived_at = ${archived_at}
-              WHERE code = ${code}
+              WHERE product_code = ${code}
             `
           }),
 
@@ -96,24 +98,44 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
           Effect.gen(function*() {
             const sql = yield* db.getConnection(merchantContext.merchantId)
             const result = yield* sql<{
-              country: string
-              currency: string
-              amount: number
-              vat_info?: Record<string, unknown>
+              country: string | null
+              currency: string | null
+              amount: number | null
+              vat_info: Record<string, unknown> | null
             }>`
               SELECT 
-                COALESCE(cp.country, p.fallback_country) as country,
-                COALESCE(cp.currency, p.fallback_currency) as currency,
-                COALESCE(cp.amount, p.fallback_amount) as amount,
-                COALESCE(cp.vat_info, p.fallback_vat_info) as vat_info
+                pr.country,
+                pr.currency,
+                pr.amount,
+                pr.vat_info
               FROM products p
-              LEFT JOIN product_country_pricing cp ON p.code = cp.product_code AND cp.country = ${country}
-              WHERE p.code = ${product_code}
+              LEFT JOIN LATERAL (
+                SELECT 
+                  country,
+                  currency,
+                  amount,
+                  vat_info
+                FROM price_rows
+                WHERE product_code = p.product_code
+                  AND (country = ${country} OR country = '*')
+                ORDER BY CASE WHEN country = ${country} THEN 0 ELSE 1 END
+                LIMIT 1
+              ) pr ON TRUE
+              WHERE p.product_code = ${product_code}
               AND p.effective_at <= NOW()
               AND (p.archived_at IS NULL OR p.archived_at > NOW())
               LIMIT 1
             `
-            return result[0] || null
+            const resolved = result[0]
+            if (!resolved || resolved.country == null || resolved.currency == null || resolved.amount == null) {
+              return null
+            }
+            return {
+              country: resolved.country,
+              currency: resolved.currency,
+              amount: resolved.amount,
+              vat_info: resolved.vat_info ?? undefined
+            }
           }),
 
         // Lifecycle queries
@@ -128,7 +150,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
               WHERE effective_at <= ${at_date}
               AND (archived_at IS NULL OR archived_at > ${at_date})
               ${distribution ? sql`AND distribution = ${distribution}` : sql``}
-              ORDER BY created_at DESC
+              ORDER BY effective_at DESC, product_code ASC
             `
           }),
 
@@ -139,7 +161,7 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
               SELECT 
                 CASE WHEN COUNT(*) > 0 THEN true ELSE false END as active
               FROM products 
-              WHERE code = ${product_code}
+              WHERE product_code = ${product_code}
               AND effective_at <= ${at_date}
               AND (archived_at IS NULL OR archived_at > ${at_date})
             `

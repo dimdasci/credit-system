@@ -2,12 +2,33 @@ import { MerchantContext } from "@credit-system/shared"
 import { DatabaseManager } from "@server/db/DatabaseManager.js"
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
 import { Effect, Layer, Option } from "effect"
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it } from "vitest"
 import { TestProductsArray } from "../../fixtures/product-test-data.js"
 
 // Mock DatabaseManager with preset test data
 // Track context for complex queries
 const mockQueryContext = { distribution: null as string | null }
+
+const mockMutations = {
+  archived: [] as Array<{ code: string; archivedAt: Date }>
+}
+
+const referenceNow = new Date("2025-03-01T00:00:00Z")
+
+const TestPriceRows: Record<string, Array<{
+  country: string
+  currency: string
+  amount: number
+  vat_info: Record<string, unknown> | null
+}>> = {
+  TEST_BASIC: [
+    { country: "US", currency: "USD", amount: 19.99, vat_info: { rate: 0.2 } },
+    { country: "*", currency: "USD", amount: 20.99, vat_info: null }
+  ],
+  TEST_WELCOME: [
+    { country: "*", currency: "GBP", amount: 5.5, vat_info: null }
+  ]
+}
 
 const mockSqlClient = {
   // Mock SQL template literal handler
@@ -30,9 +51,22 @@ const mockSqlClient = {
     if (
       query.includes("SELECT * FROM products") && query.includes("WHERE product_code = ?") && query.includes("LIMIT 1")
     ) {
+      if (!query.includes("AND effective_at <= NOW()")) {
+        throw new Error("Expected effective_at filter for getProductByCode")
+      }
+      if (!query.includes("AND (archived_at IS NULL OR archived_at > NOW())")) {
+        throw new Error("Expected archived_at filter for getProductByCode")
+      }
       const productCode = values[0] as string
       const product = TestProductsArray.find((p) => p.product_code === productCode)
-      return Effect.succeed(product ? [product] : [])
+      if (!product) {
+        return Effect.succeed([])
+      }
+
+      const effectiveAt = new Date(product.effective_at)
+      const archivedAt = product.archived_at ? new Date(product.archived_at) : null
+      const activeNow = effectiveAt <= referenceNow && (!archivedAt || archivedAt > referenceNow)
+      return Effect.succeed(activeNow ? [product] : [])
     }
 
     // Handle active products query
@@ -40,8 +74,12 @@ const mockSqlClient = {
       query.includes("SELECT * FROM products") && query.includes("WHERE effective_at <= NOW()") &&
       query.includes("AND archived_at IS NULL") && !query.includes("AND distribution")
     ) {
-      const now = new Date()
-      const activeProducts = TestProductsArray.filter((p) => new Date(p.effective_at) <= now && p.archived_at === null)
+      if (!query.includes("ORDER BY effective_at DESC, product_code ASC")) {
+        throw new Error("Expected ordering by effective_at and product_code for active products")
+      }
+      const activeProducts = TestProductsArray.filter((p) =>
+        new Date(p.effective_at) <= referenceNow && p.archived_at === null
+      )
       return Effect.succeed(activeProducts)
     }
 
@@ -50,9 +88,11 @@ const mockSqlClient = {
       query.includes("SELECT * FROM products") && query.includes("WHERE effective_at <= NOW()") &&
       query.includes("AND archived_at IS NULL") && query.includes("AND distribution = 'sellable'")
     ) {
-      const now = new Date()
+      if (!query.includes("ORDER BY effective_at DESC, product_code ASC")) {
+        throw new Error("Expected ordering by effective_at and product_code for sellable products")
+      }
       const sellableProducts = TestProductsArray.filter((p) =>
-        new Date(p.effective_at) <= now &&
+        new Date(p.effective_at) <= referenceNow &&
         p.archived_at === null &&
         p.distribution === "sellable"
       )
@@ -64,6 +104,9 @@ const mockSqlClient = {
       query.includes("SELECT * FROM products") && query.includes("WHERE effective_at <= ?") &&
       query.includes("AND (archived_at IS NULL OR archived_at > ?)")
     ) {
+      if (!query.includes("ORDER BY effective_at DESC, product_code ASC")) {
+        throw new Error("Expected ordering by effective_at and product_code for lifecycle query")
+      }
       const atDate = values[0] as Date
       const distribution = mockQueryContext.distribution
 
@@ -82,6 +125,9 @@ const mockSqlClient = {
 
     // Handle product activity check
     if (query.includes("CASE WHEN COUNT(*) > 0 THEN true ELSE false END as active")) {
+      if (!query.includes("WHERE product_code = ?")) {
+        throw new Error("Expected product_code filter in activity check")
+      }
       const productCode = values[0] as string
       const atDate = values[1] as Date
       const product = TestProductsArray.find((p) => p.product_code === productCode)
@@ -91,12 +137,30 @@ const mockSqlClient = {
       return Effect.succeed([{ active: Boolean(isActive) }])
     }
 
+    // Handle price resolution query
+    if (query.includes("FROM price_rows") && query.includes("LEFT JOIN LATERAL")) {
+      const requestedCountry = values[0] as string
+      const productCode = values[2] as string
+      const priceRows = TestPriceRows[productCode] ?? []
+      const directMatch = priceRows.find((row) => row.country === requestedCountry)
+      const fallbackMatch = priceRows.find((row) => row.country === "*")
+      const resolved = directMatch ?? fallbackMatch
+      return Effect.succeed(resolved ? [resolved] : [])
+    }
+
     // Handle CREATE and UPDATE operations
     if (query.includes("INSERT INTO products")) {
       return Effect.succeed({ insertId: 1 })
     }
 
-    if (query.includes("UPDATE products SET archived_at = ?")) {
+    if (query.includes("UPDATE products") && query.includes("SET archived_at = ?")) {
+      if (!query.includes("WHERE product_code = ?")) {
+        throw new Error("Expected product_code filter when archiving product")
+      }
+      mockMutations.archived.push({
+        code: values[1] as string,
+        archivedAt: values[0] as Date
+      })
       return Effect.succeed({ affectedRows: 1 })
     }
 
@@ -136,6 +200,11 @@ const TestLayer = Layer.provide(
   MockMerchantContextLayer
 )
 
+beforeEach(() => {
+  mockQueryContext.distribution = null
+  mockMutations.archived = []
+})
+
 describe("ProductRepository Business Logic", () => {
   describe("getProductByCode", () => {
     it("returns product when it exists", () =>
@@ -153,6 +222,14 @@ describe("ProductRepository Business Logic", () => {
       Effect.gen(function*() {
         const repo = yield* ProductRepository
         const product = yield* repo.getProductByCode("NON_EXISTENT")
+
+        expect(product).toBeNull()
+      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
+
+    it("treats archived products as unavailable", () =>
+      Effect.gen(function*() {
+        const repo = yield* ProductRepository
+        const product = yield* repo.getProductByCode("TEST_ARCHIVED")
 
         expect(product).toBeNull()
       }).pipe(Effect.provide(TestLayer), Effect.runPromise))
@@ -219,6 +296,51 @@ describe("ProductRepository Business Logic", () => {
         const codes = grantProducts.map((p) => p.product_code)
         expect(codes).toContain("TEST_WELCOME")
         expect(codes).toContain("TEST_MANUAL_GRANT")
+      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
+  })
+
+  describe("getResolvedPrice", () => {
+    it("returns country-specific pricing when available", () =>
+      Effect.gen(function*() {
+        const repo = yield* ProductRepository
+        const price = yield* repo.getResolvedPrice("TEST_BASIC", "US")
+
+        expect(price).not.toBeNull()
+        expect(price?.country).toBe("US")
+        expect(price?.currency).toBe("USD")
+        expect(price?.amount).toBeCloseTo(19.99)
+      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
+
+    it("falls back to wildcard pricing when direct match is missing", () =>
+      Effect.gen(function*() {
+        const repo = yield* ProductRepository
+        const price = yield* repo.getResolvedPrice("TEST_WELCOME", "FR")
+
+        expect(price).not.toBeNull()
+        expect(price?.country).toBe("*")
+        expect(price?.currency).toBe("GBP")
+        expect(price?.amount).toBeCloseTo(5.5)
+      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
+
+    it("returns null when no pricing rows exist", () =>
+      Effect.gen(function*() {
+        const repo = yield* ProductRepository
+        const price = yield* repo.getResolvedPrice("TEST_MANUAL_GRANT", "US")
+
+        expect(price).toBeNull()
+      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
+  })
+
+  describe("archiveProduct", () => {
+    it("updates archived_at using the product_code column", () =>
+      Effect.gen(function*() {
+        const repo = yield* ProductRepository
+        const archivedAt = new Date("2025-03-01T00:00:00Z")
+
+        yield* repo.archiveProduct("TEST_BASIC", archivedAt)
+
+        expect(mockMutations.archived).toHaveLength(1)
+        expect(mockMutations.archived[0]).toEqual({ code: "TEST_BASIC", archivedAt })
       }).pipe(Effect.provide(TestLayer), Effect.runPromise))
   })
 
