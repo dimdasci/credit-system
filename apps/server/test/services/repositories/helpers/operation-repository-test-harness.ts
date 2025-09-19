@@ -337,7 +337,7 @@ const MockMerchantContextLayer = Layer.succeed(MerchantContext, {
 
 export const TestLayer = Layer.provide(
   Layer.provide(
-    OperationRepositoryService.DefaultWithoutDependencies,
+    OperationRepositoryService.Default,
     MockDatabaseManagerLayer
   ),
   MockMerchantContextLayer

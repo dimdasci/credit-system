@@ -84,6 +84,15 @@ Use only Acceptance Criteria for functional requirements. Skip Implementation Ch
 
 Default assumption: Tasks are done when they work as specified and tests pass. Don't repeat the same requirements in multiple sections.
 
+## Task Completion Criteria
+
+**CRITICAL**: A task is complete ONLY when ALL of the following conditions are met:
+1. No TypeScript compilation errors (`pnpm run check` passes)
+2. No linter errors (`pnpm run lint` passes)
+3. ALL tests pass successfully (`pnpm test` passes)
+
+**Failing tests = incomplete implementation.** Never claim a task is complete or "production-ready" when tests are failing. Fix all issues until the entire test suite passes.
+
 ## Commands
 
 `pnpm run dev` run from project root to start server in the development mode

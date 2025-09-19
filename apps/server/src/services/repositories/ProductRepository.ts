@@ -1,8 +1,7 @@
 import { MerchantContext } from "@credit-system/shared"
 import * as SqlSchema from "@effect/sql/SqlSchema"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Schema } from "effect"
 import { DatabaseManager } from "../../db/DatabaseManager.js"
-import { DatabaseManagerLive, PgLayerFactoryLive } from "../../db/DatabaseManagerImpl.js"
 import { Product } from "../../domain/products/Product.js"
 
 export class ProductRepository extends Effect.Service<ProductRepository>()(
@@ -168,7 +167,6 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
             return result[0]?.active || false
           })
       }
-    }),
-    dependencies: [Layer.provide(DatabaseManagerLive, PgLayerFactoryLive)]
+    })
   }
 ) {}

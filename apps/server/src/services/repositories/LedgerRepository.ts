@@ -1,13 +1,12 @@
 import { MerchantContext } from "@credit-system/shared"
 import * as SqlSchema from "@effect/sql/SqlSchema"
 import { DatabaseManager } from "@server/db/DatabaseManager.js"
-import { DatabaseManagerLive, PgLayerFactoryLive } from "@server/db/DatabaseManagerImpl.js"
 import { LedgerEntry } from "@server/domain/credit-ledger/LedgerEntry.js"
 import { Lot } from "@server/domain/credit-ledger/Lot.js"
 import type { Product } from "@server/domain/products/Product.js"
 import { InsufficientBalance, InvalidRequest, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
 import { createMonthDate } from "@server/domain/shared/MonthDate.js"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Schema } from "effect"
 import { randomUUID } from "node:crypto"
 
 // Query options for ledger history and lot queries
@@ -749,7 +748,6 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
             }
           })
       }
-    }),
-    dependencies: [Layer.provide(DatabaseManagerLive, PgLayerFactoryLive)]
+    })
   }
 ) {}
