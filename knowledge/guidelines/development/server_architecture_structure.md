@@ -135,20 +135,44 @@ export class ProductRepository extends Effect.Service<ProductRepository>()("Prod
 }
 ```
 
+### Dependency Management and Clean Architecture
+
+To handle service dependencies in a structured way and prevent them from leaking into the service interfaces, use the Layer abstraction for service construction.
+
+When a service has its own requirements, it's best to separate implementation details into layers. Layers act as **constructors for creating the service**, allowing us to handle dependencies at the construction level rather than the service level.
+
+**Key Principle**: Service operations should have the Requirements parameter set to `never`:
+
+```typescript
+// ✅ GOOD: Clean service interface - no requirement leakage
+getUserBalance: (user_id: string) => Effect.Effect<number, InvalidRequest | ServiceUnavailable>
+//                                                                                        ^^^^^
+//                                                                           Requirements = never (implicit)
+
+// ❌ AVOID: Requirement leakage - dependencies exposed in service interface
+getUserBalance: (user_id: string) => Effect.Effect<number, InvalidRequest | ServiceUnavailable, DatabaseManager>
+//                                                                                               ^^^^^^^^^^^^^^^
+//                                                                                    Dependencies leaked into interface
+```
+
 ### Error Handling
 - Domain-specific errors in `domain/shared/DomainErrors.ts`
 - Effect-based error handling throughout services
 - Database errors mapped to domain errors in repositories
 
-## Benefits of This Structure
+## Current Status
 
-1. **Immediate Clarity**: Developer instantly understands this is a credit management system
-2. **Pragmatic Separation**: Clean boundaries without over-engineering
-3. **Effect-First**: Leverages modern Effect patterns for composition and safety
-4. **SQL Efficiency**: Database handles what it does best (aggregations, filtering)
-5. **Maintainability**: Business logic in services, data structures in domain
-6. **Testability**: Easy mocking with Effect.Service patterns
-7. **Onboarding**: Business concepts clear, implementation patterns consistent
+**Implemented:**
+- Domain layer with pure schemas
+- Repository layer with SQL-first approach
+- Initial business services (PurchaseSettlementService)
+- Database and middleware at root level (temporary)
+- API composition at root level (temporary)
+
+**Planned:**
+- Application layer with use cases and RPC handlers
+- Migration of infrastructure services to `services/external/`
+- Additional business services as needed
 
 ## Migration from Complex Layer Architectures
 
