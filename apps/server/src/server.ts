@@ -1,13 +1,14 @@
-import { AdminPublicRpcs, AdminRpcs, HealthRpcs, VersionRpcs } from "@credit-system/rpc"
+import { AdminPublicRpcs, HealthRpcs, VersionRpcs } from "@credit-system/rpc"
 import { ServerConfig } from "@credit-system/shared"
 import { HttpLayerRouter } from "@effect/platform"
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
 import { RpcSerialization, RpcServer } from "@effect/rpc"
 import { ConfigProvider, Effect, Layer } from "effect"
 import { createServer } from "node:http"
-import { AdminHandlers, AdminPublicHandlers } from "./application/rpc/handlers/AdminHandler.js"
+import { AdminHandlers, AdminPublicHandlers, ProtectedAdminRpcs } from "./application/rpc/handlers/AdminHandler.js"
 import { HealthHandlers } from "./application/rpc/handlers/HealthHandler.js"
 import { VersionHandlers } from "./application/rpc/handlers/VersionHandler.js"
+import { AuthorizationLive } from "./application/rpc/middleware/AuthorizationMiddleware.js"
 import { TokenServiceLive } from "./services/business/TokenService.js"
 import { DatabaseManagerLive, PgLayerFactoryLive } from "./services/external/DatabaseManagerImpl.js"
 
@@ -29,7 +30,7 @@ const DatabaseLive = Layer.provide(DatabaseManagerLive, PgLayerFactoryLive)
 const AllRpcs = HealthRpcs
   .merge(VersionRpcs)
   .merge(AdminPublicRpcs)
-  .merge(AdminRpcs)
+  .merge(ProtectedAdminRpcs)
 
 // Create single RPC endpoint
 const RpcLayers = RpcServer.layerHttpRouter({
@@ -43,6 +44,7 @@ const HttpLive = HttpLayerRouter.serve(RpcLayers, {}).pipe(
   Layer.provide(HealthHandlers),
   Layer.provide(VersionHandlers),
   Layer.provide(AdminPublicHandlers),
+  Layer.provide(AuthorizationLive),
   Layer.provide(AdminHandlers),
   Layer.provide(TokenServiceLive),
   Layer.provide(DatabaseLive),
