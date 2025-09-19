@@ -1,14 +1,16 @@
 import { MerchantContext } from "@credit-system/shared"
 import { DatabaseManager } from "@server/db/DatabaseManager.js"
+import { PurchaseSettlementService } from "@server/services/business/PurchaseSettlementService.js"
 import { LedgerRepository } from "@server/services/repositories/LedgerRepository.js"
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
-import { PurchaseSettlementService } from "@server/services/repositories/PurchaseSettlementService.js"
 import { ReceiptRepository } from "@server/services/repositories/ReceiptRepository.js"
 import { Effect, Layer } from "effect"
 import { TestSettlementData } from "../../../fixtures/settlement-test-data.js"
 
 export interface MockQueryContext {
   lastInsertValues: Array<unknown> | null
+  lastLedgerInsertValues: Array<unknown> | null
+  lastReceiptInsertValues: Array<unknown> | null
   lastUpdateValues: Array<unknown> | null
   lastQuery: string
   lastQueryValues: Array<unknown>
@@ -20,6 +22,8 @@ export interface MockQueryContext {
 
 const initialContext = (): MockQueryContext => ({
   lastInsertValues: null,
+  lastLedgerInsertValues: null,
+  lastReceiptInsertValues: null,
   lastUpdateValues: null,
   lastQuery: "",
   lastQueryValues: [],
@@ -69,7 +73,9 @@ const mockSqlClient = {
             if ("values" in (value as Record<string, unknown>)) {
               const fragmentValues = (value as { values?: Array<unknown> }).values
               if (fragmentValues) {
-                resolvedValues.push(...fragmentValues)
+                for (const fragmentValue of fragmentValues) {
+                  resolvedValues.push(fragmentValue)
+                }
               }
             }
             query += strings[i + 1] ?? ""
@@ -105,16 +111,12 @@ const mockSqlClient = {
       const productCode = resolvedValues[0] as string
       const product = TestSettlementData.products.find((p) => p.product_code === productCode)
 
-      // Check if product is active at the specified time
-      const now = new Date()
-      if (
-        product && new Date(product.effective_at) <= now &&
-        (!product.archived_at || new Date(product.archived_at) > now)
-      ) {
+      if (product) {
         const effect = Effect.succeed([product])
         return attachTemplate(effect)
       } else {
-        const effect = Effect.succeed([])
+        // SqlSchema.single throws NoSuchElementException when no results found
+        const effect = Effect.fail({ _tag: "NoSuchElementException" })
         return attachTemplate(effect)
       }
     }
@@ -141,8 +143,8 @@ const mockSqlClient = {
       query.includes("SELECT") && query.includes("pr.country") && query.includes("pr.currency") &&
       query.includes("FROM products p") && query.includes("LEFT JOIN LATERAL")
     ) {
-      const productCode = resolvedValues[0] as string
-      const country = resolvedValues[1] as string
+      const country = resolvedValues[0] as string
+      const productCode = resolvedValues[2] as string
 
       const product = TestSettlementData.products.find((p) => p.product_code === productCode)
       if (product && product.price_rows) {
@@ -162,7 +164,6 @@ const mockSqlClient = {
           return attachTemplate(effect)
         }
       }
-
       const effect = Effect.succeed([{
         country: null,
         currency: null,
@@ -181,14 +182,48 @@ const mockSqlClient = {
       return attachTemplate(effect)
     }
 
-    // ReceiptRepository.getNextReceiptNumber simulation
-    if (query.includes("SELECT COALESCE(MAX(") && query.includes("receipt_number")) {
-      const seriesPrefix = resolvedValues[0] as string
-      const year = resolvedValues[1] as number
+    // LedgerRepository.getLotById simulation
+    if (
+      query.includes("SELECT * FROM ledger_entries") &&
+      query.includes("WHERE lot_id = ?") &&
+      query.includes("AND lot_month = ?") &&
+      query.includes("AND entry_id = lot_id")
+    ) {
+      const lotId = resolvedValues[0] as string
+      const lotMonth = resolvedValues[1] as string
+      const entry = TestSettlementData.existingLedgerEntries.find(
+        (e) => e.lot_id === lotId && e.lot_month === lotMonth
+      )
 
-      // Generate next receipt number in format R-AM-YYYY-NNNN
-      const nextNumber = `${seriesPrefix}-${year}-0001`
-      const effect = Effect.succeed([{ next_number: nextNumber }])
+      const effect = Effect.succeed(entry ? [entry] : [])
+      return attachTemplate(effect)
+    }
+
+    // ReceiptRepository.getReceiptByExternalRef simulation (for idempotency check)
+    if (
+      query.includes("SELECT r.* FROM receipts r") &&
+      query.includes("INNER JOIN ledger_entries le") &&
+      query.includes("WHERE le.workflow_id = ?")
+    ) {
+      const externalRef = resolvedValues[0] as string
+      const existingReceipt = TestSettlementData.existingReceipts.find((r) =>
+        r.purchase_snapshot.external_ref === externalRef
+      )
+
+      const effect = Effect.succeed(existingReceipt ? [existingReceipt] : [])
+      return attachTemplate(effect)
+    }
+
+    // ReceiptRepository.getNextReceiptNumber simulation - sequence creation
+    if (query.includes("DO $$") && query.includes("CREATE SEQUENCE")) {
+      const effect = Effect.succeed([])
+      return attachTemplate(effect)
+    }
+
+    // ReceiptRepository.getNextReceiptNumber simulation - nextval
+    if (query.includes("SELECT nextval(") && query.includes("as next_val")) {
+      // Return the next sequence value
+      const effect = Effect.succeed([{ next_val: 1 }])
       return attachTemplate(effect)
     }
 
@@ -200,6 +235,7 @@ const mockSqlClient = {
       )
     ) {
       mockQueryContext.lastInsertValues = resolvedValues
+      mockQueryContext.lastLedgerInsertValues = resolvedValues
 
       // Check for duplicate external_ref simulation (for idempotency)
       const workflowId = resolvedValues.find((v) => typeof v === "string" && v?.includes("external-ref-")) as string
@@ -215,11 +251,12 @@ const mockSqlClient = {
     // ReceiptRepository.createReceipt simulation (INSERT INTO receipts)
     if (query.includes("INSERT INTO receipts")) {
       mockQueryContext.lastInsertValues = resolvedValues
+      mockQueryContext.lastReceiptInsertValues = resolvedValues
       const effect = Effect.succeed({ insertId: 1 })
       return attachTemplate(effect)
     }
 
-    // Default fallback
+    // Default fallback for unhandled queries
     const effect = Effect.succeed([])
     return attachTemplate(effect)
   },
@@ -229,28 +266,98 @@ const mockSqlClient = {
     return Effect.gen(function*() {
       mockQueryContext.transactionCallCount++
 
-      try {
-        const result = yield* effect
-        mockQueryContext.commitCalled = true
-        return result
-      } catch (error) {
-        mockQueryContext.rollbackCalled = true
-        throw error
-      }
+      const result = yield* effect.pipe(
+        Effect.tapError(() =>
+          Effect.sync(() => {
+            mockQueryContext.rollbackCalled = true
+          })
+        ),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            mockQueryContext.commitCalled = true
+          })
+        )
+      )
+
+      return result
     })
   }
 }
 
 const createMockSql = () => {
-  const sqlFunction = (strings: TemplateStringsArray, ...values: Array<unknown>) =>
-    mockSqlClient.raw(strings, ...values)
+  // Get the current context at the time of creation
+  const currentContext = mockQueryContext
+
+  const sqlFunction = (strings: TemplateStringsArray, ...values: Array<unknown>) => {
+    let query = strings[0] ?? ""
+    const resolvedValues: Array<unknown> = []
+
+    for (let i = 0; i < values.length; i++) {
+      const value = values[i]
+
+      // Handle SQL fragments (conditional SQL fragments from repositories)
+      if (value && typeof value === "object") {
+        if ("strings" in (value as Record<string, unknown>)) {
+          const fragmentStrings = (value as { strings?: ReadonlyArray<string> }).strings
+          if (fragmentStrings && fragmentStrings.length > 0) {
+            // This is a template literal fragment - extract the SQL text
+            const fragmentQuery = fragmentStrings.join("?")
+            query += fragmentQuery
+            // Extract any parameters from the fragment
+            if ("values" in (value as Record<string, unknown>)) {
+              const fragmentValues = (value as { values?: Array<unknown> }).values
+              if (fragmentValues) {
+                for (const fragmentValue of fragmentValues) {
+                  resolvedValues.push(fragmentValue)
+                }
+              }
+            }
+            query += strings[i + 1] ?? ""
+            continue
+          }
+        }
+      }
+
+      query += "?"
+      resolvedValues.push(value)
+      query += strings[i + 1] ?? ""
+    }
+
+    query = query.trim()
+    currentContext.lastQuery = query
+    currentContext.lastQueryValues = resolvedValues
+    currentContext.lastTransactionQueries.push(query)
+
+    // Use the same mock logic as the original mockSqlClient
+    return mockSqlClient.raw(strings, ...values)
+  }
 
   Object.assign(sqlFunction, {
     [Symbol.for("sql-template")]: true,
-    withTransaction: mockSqlClient.withTransaction,
+    withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+      return Effect.gen(function*() {
+        currentContext.transactionCallCount++
+
+        const result = yield* effect.pipe(
+          Effect.tapError(() =>
+            Effect.sync(() => {
+              currentContext.rollbackCalled = true
+            })
+          ),
+          Effect.tap(() =>
+            Effect.sync(() => {
+              currentContext.commitCalled = true
+            })
+          )
+        )
+
+        return result
+      })
+    },
     raw: (queryText: string, params: Array<unknown>) => {
-      mockQueryContext.lastQuery = queryText
-      mockQueryContext.lastQueryValues = params
+      currentContext.lastQuery = queryText
+      currentContext.lastQueryValues = params
+      currentContext.lastTransactionQueries.push(queryText)
       return mockSqlClient.raw([queryText] as any, ...params)
     }
   })
@@ -258,29 +365,30 @@ const createMockSql = () => {
   return sqlFunction as any
 }
 
-const MockDatabaseManagerLayer = Layer.succeed(DatabaseManager, {
-  getConnection: (_merchantId: string) => Effect.succeed(createMockSql())
-})
+export const withTestLayer = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+  // Create completely fresh, non-memoized layers for each test execution
+  // using Layer.fresh() to force new instances and avoid sharing
+  const mockDatabaseManagerLayer = Layer.fresh(
+    Layer.succeed(DatabaseManager, {
+      getConnection: (_merchantId: string) => Effect.succeed(createMockSql())
+    })
+  )
 
-const MockMerchantContextLayer = Layer.succeed(MerchantContext, {
-  merchantId: "test-merchant-id"
-})
+  const mockMerchantContextLayer = Layer.fresh(
+    Layer.succeed(MerchantContext, {
+      merchantId: "test-merchant-id"
+    })
+  )
 
-export const TestLayer = Layer.provide(
-  Layer.provide(
-    Layer.provide(
-      Layer.provide(
-        Layer.provide(
-          PurchaseSettlementService.DefaultWithoutDependencies,
-          Layer.provide(LedgerRepository.DefaultWithoutDependencies, MockDatabaseManagerLayer)
-        ),
-        Layer.provide(ProductRepository.DefaultWithoutDependencies, MockDatabaseManagerLayer)
-      ),
-      Layer.provide(ReceiptRepository.DefaultWithoutDependencies, MockDatabaseManagerLayer)
-    ),
-    MockDatabaseManagerLayer
-  ),
-  MockMerchantContextLayer
-)
+  const baseLayer = Layer.mergeAll(mockMerchantContextLayer, mockDatabaseManagerLayer)
 
-export const withTestLayer = <A, E, R>(effect: Effect.Effect<A, E, R>) => effect.pipe(Effect.provide(TestLayer))
+  const testLayer = Layer.mergeAll(
+    baseLayer,
+    Layer.provide(LedgerRepository.Default, Layer.fresh(baseLayer)),
+    Layer.provide(ProductRepository.Default, Layer.fresh(baseLayer)),
+    Layer.provide(ReceiptRepository.Default, Layer.fresh(baseLayer)),
+    Layer.provide(PurchaseSettlementService.Default, Layer.fresh(baseLayer))
+  )
+
+  return effect.pipe(Effect.provide(testLayer))
+}

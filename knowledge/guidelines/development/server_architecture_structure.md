@@ -99,6 +99,19 @@ apps/server/src/
 - Business services orchestrate repository operations
 - Services own their implementation and dependencies
 
+#### Service Subfolders
+
+- `services/repositories/`: data-access services that translate domain intents into SQL. Everything here should map closely to tables or read models.
+- `services/business/`: orchestration layers that compose repositories, enforce invariants, and model business workflows (e.g., settlement, catalog operations).
+- `services/external/`: adapters for infrastructure concerns (database manager, payment gateways, notifications). Keep IO-heavy logic here.
+
+When adding a new service, ask:
+1. **Does it persist or read data directly?** → place under `repositories/`.
+2. **Does it coordinate multiple repositories or enforce cross-aggregate rules?** → place under `business/`.
+3. **Does it call third-party systems?** → place under `external/`.
+
+Avoid “misc” folders—if a service doesn’t fit any category, reconsider its responsibilities or create a narrowly scoped subfolder (e.g., `services/business/settlement/`) once multiple related services appear.
+
 ### Effect.Service Pattern
 ```typescript
 // services/repositories/ProductRepository.ts
@@ -163,187 +176,24 @@ When simplifying existing over-engineered code:
 
 This structure ensures the codebase clearly communicates its business purpose while avoiding common over-engineering pitfalls.
 
-## Testing Structure
+## Testing Guidance
 
-### Purpose
+Testing strategy intentionally lives in a dedicated document. See
+`knowledge/guidelines/development/effect-testing-patterns.md` for the
+current Effect-driven testing blueprint, including directory structure,
+layer composition, and anti-patterns to avoid.
 
-Define testing organization that mirrors the simplified architecture, with domain schema tests and service implementation tests using Effect.Service patterns.
+## Evolving the Structure
 
-### Testing Principles
+The tree above reflects the minimal system in place today. As the platform grows:
 
-1. **Domain-First Testing**: Test structure reflects business aggregates
-2. **Effect.Service Testing**: Use built-in mock patterns for service testing
-3. **SQL-First Testing**: Test database queries and business logic together
-4. **Pragmatic Focus**: Test business rules and data integrity, not abstract interfaces
+- **New aggregates** (e.g., billing, reporting) should mirror the existing pattern: schemas under `domain/`, repositories for persistence, business services for orchestration, and application-level use-cases for API exposure.
+- **Cross-cutting workflows** (audit, reconciliation) warrant their own business services rather than forcing logic into repositories.
+- **Integration adapters** (Kafka publishers, webhooks) belong under `services/external/` to keep side effects isolated.
 
-### Test Directory Structure
+Whenever you introduce a new folder, document the intent in this guide so future work stays aligned. Each addition should answer:
+1. What business concept does it represent?
+2. Which layer owns it (domain, service, application)?
+3. How does it interact with existing modules?
 
-```
-apps/server/test/
-├── domain/                                    # Schema validation tests
-│   ├── credit-ledger/
-│   │   ├── LedgerEntry.test.ts               # Schema validation and business rules
-│   │   └── Lot.test.ts                       # Schema validation and constraints
-│   ├── operations/
-│   │   ├── Operation.test.ts                 # Operation lifecycle schema
-│   │   └── OperationType.test.ts             # Rate and billing validation
-│   ├── products/
-│   │   └── Product.test.ts                   # Product schema and pricing rules
-│   ├── receipts/
-│   │   └── Receipt.test.ts                   # Receipt schema validation
-│   └── shared/
-│       ├── Credits.test.ts                   # Credit value object validation
-│       ├── UserId.test.ts                    # User ID validation
-│       └── DomainErrors.test.ts              # Error type definitions
-│
-├── services/                                  # Service implementation tests
-│   ├── repositories/                          # Repository Effect.Service tests
-│   │   ├── ProductRepository.test.ts         # SQL operations + business logic
-│   │   ├── LedgerRepository.test.ts          # Ledger operations + balance queries
-│   │   ├── OperationRepository.test.ts       # Operation lifecycle persistence
-│   │   └── ReceiptRepository.test.ts         # Receipt persistence and retrieval
-│   ├── business/                             # Business service tests
-│   │   ├── LedgerService.test.ts            # Credit lot creation and consumption
-│   │   ├── ProductCatalog.test.ts           # Product availability and pricing
-│   │   └── ReceiptGenerator.test.ts         # PDF generation with tax compliance
-│   └── integration/                          # Cross-service integration tests
-│       ├── merchant-isolation.test.ts        # Multi-tenant data isolation
-│       ├── transaction-boundaries.test.ts    # Database transaction tests
-│       └── service-composition.test.ts       # Effect.Service dependency chains
-│
-├── fixtures/                                 # Shared test data and setup
-│   ├── test-data.ts                         # Sample entities by aggregate
-│   ├── database-setup.ts                    # Test database configuration
-│   └── effect-runtime.ts                    # Test Effect runtime configuration
-│
-└── utils/                                    # Test utilities
-    ├── effect-helpers.ts                    # Effect.Service testing patterns
-    └── database-helpers.ts                  # Database testing utilities
-```
-
-### Test Categories by Layer
-
-#### Domain Schema Tests
-**Purpose**: Validate data structures and business validation rules
-
-**Test Types**:
-- **Schema Validation Tests**: Effect Schema parsing and validation
-- **Business Rule Tests**: Domain constraints and invariants  
-- **Value Object Tests**: Immutable value validation
-- **Error Type Tests**: Domain error definitions
-
-**Example Focus**:
-```typescript
-// Test schema validation and business rules
-describe("Product Schema", () => {
-  it("grant products require grant_policy")
-  it("sellable products cannot have grant_policy") 
-  it("pricing follows country->fallback hierarchy validation")
-  it("effective_at must be <= archived_at when both present")
-})
-```
-
-#### Service Implementation Tests  
-**Purpose**: Validate Effect.Service implementations with database operations
-
-**Test Types**:
-- **Repository Tests**: SQL operations with business logic validation
-- **Service Integration Tests**: Effect.Service composition and dependencies
-- **Mock Testing**: Built-in Effect.Service mock patterns
-- **Database Tests**: Query correctness, constraints, and isolation
-
-**Example Focus**:
-```typescript
-// Test Effect.Service implementations
-describe("ProductRepository Service", () => {
-  it("getActiveProducts filters by effective/archived dates in SQL")
-  it("createProduct respects merchant isolation")
-  it("database constraints map to domain errors")
-  it("mock service provides test-friendly behavior")
-})
-```
-
-### Effect.Service Testing Guidelines
-
-#### Service Implementation Tests
-**Location**: `test/services/{category}/{ServiceName}.test.ts`
-**Focus**: Complete service behavior including database operations
-
-```typescript
-describe("ProductRepository Service", () => {
-  it("Effect.Service correctly defined with dependencies")
-  it("createProduct persists with proper validation")
-  it("getActiveProducts uses SQL filtering for performance")
-  it("database errors map to domain error types")
-  it("Mock service provides consistent test behavior")
-})
-
-// Using built-in mock patterns
-const testWithMockService = Effect.gen(function* () {
-  const repo = yield* ProductRepository
-  const result = yield* repo.createProduct(testProduct)
-  return result
-}).pipe(
-  Effect.provide(ProductRepository.Mock)
-)
-```
-
-### Testing Standards
-
-#### Effect Testing Patterns
-All tests use Effect framework for consistency and composition:
-
-```typescript
-import { Effect } from "effect"
-import { describe, expect, it } from "vitest"
-
-// Domain schema testing
-describe("Product Schema", () => {
-  it("validates required fields", () => {
-    const result = Product.decode(invalidData)
-    expect(result._tag).toBe("Left")
-  })
-})
-
-// Service testing with mocks
-describe("ProductRepository Service", () => {
-  it("creates products successfully", () =>
-    Effect.gen(function* () {
-      const repo = yield* ProductRepository
-      const result = yield* repo.createProduct(validProduct)
-      expect(result).toBeDefined()
-    }).pipe(
-      Effect.provide(ProductRepository.Mock),
-      Effect.runPromise
-    )
-  )
-})
-```
-
-#### Test Data and Setup
-- **Fixtures**: Business-focused test data by aggregate
-- **Database**: Isolated test database with automatic cleanup
-- **Effect Runtime**: Shared runtime configuration for tests
-- **Mock Services**: Use Effect.Service built-in mock patterns
-
-#### Testing Focus Areas
-Every service test should verify:
-1. **Schema Validation**: Domain constraints enforced
-2. **Business Logic**: Service behavior matches requirements  
-3. **SQL Operations**: Database queries work correctly
-4. **Error Handling**: Appropriate domain errors returned
-5. **Mock Compatibility**: Mock services provide consistent behavior
-
-### Simplified CI Pipeline
-
-#### Test Phases
-1. **Schema Tests**: Domain validation (no database needed)
-2. **Service Tests**: Effect.Service implementations with test database
-3. **Integration Tests**: Cross-service workflows
-
-#### Database Testing
-- **Per-suite isolation**: Each service test gets clean database
-- **SQL-focused**: Test actual queries, not abstract interfaces
-- **Performance aware**: Validate query efficiency and partitioning
-
-This simplified testing approach ensures good coverage while avoiding the complexity of over-layered architectures.
+Keeping this document updated ensures structural decisions remain explicit and discoverable.

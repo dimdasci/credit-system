@@ -1,6 +1,6 @@
 import type { Product } from "@server/domain/products/Product.js"
 import type { Receipt } from "@server/domain/receipts/Receipt.js"
-import type { SettlementRequest, PricingSnapshot } from "@server/services/repositories/PurchaseSettlementService.js"
+import type { PricingSnapshot, SettlementRequest } from "@server/services/business/PurchaseSettlementService.js"
 
 export const TestUsers = {
   USER_1: "user-1-new-purchase",
@@ -119,6 +119,14 @@ export const TestSettlementRequests = {
     external_ref: "external-ref-duplicate", // This will be in existingExternalRefs
     settled_at: new Date("2025-03-10T10:05:00Z")
   } as SettlementRequest,
+  DUPLICATE_EXTERNAL_REF_MISMATCH: {
+    user_id: TestUsers.USER_3,
+    product_code: TestProducts.BASIC_PLAN.product_code,
+    pricing_snapshot: TestPricingSnapshots.VALID_US_PRICING,
+    order_placed_at: new Date("2025-03-10T10:00:00Z"),
+    external_ref: "external-ref-duplicate",
+    settled_at: new Date("2025-03-10T10:05:00Z")
+  } as SettlementRequest,
   PRODUCT_NOT_FOUND: {
     user_id: TestUsers.USER_1,
     product_code: "non-existent-plan",
@@ -181,6 +189,9 @@ export const TestSettlementRequests = {
   } as SettlementRequest
 } as const
 
+const EXISTING_LOT_ID = "11111111-1111-1111-1111-111111111111"
+const EXISTING_RECEIPT_ID = "22222222-2222-2222-2222-222222222222"
+
 export const TestSettlementData = {
   products: [
     TestProducts.BASIC_PLAN as Product.Encoded,
@@ -191,9 +202,9 @@ export const TestSettlementData = {
   // Existing receipts for idempotency testing
   existingReceipts: [
     {
-      receipt_id: "existing-receipt-1",
+      receipt_id: EXISTING_RECEIPT_ID,
       user_id: TestUsers.USER_2,
-      lot_id: "existing-lot-1",
+      lot_id: EXISTING_LOT_ID,
       lot_created_month: "2025-03-01",
       receipt_number: "R-AM-2025-0001",
       issued_at: "2025-03-01T10:00:00Z",
@@ -203,7 +214,8 @@ export const TestSettlementData = {
         external_ref: "external-ref-duplicate",
         country: "US",
         currency: "USD",
-        amount: 9.99
+        amount: 9.99,
+        tax_breakdown: TestPricingSnapshots.VALID_US_PRICING.tax_breakdown
       },
       merchant_config_snapshot: {
         merchant_id: "test-merchant-id",
@@ -213,8 +225,32 @@ export const TestSettlementData = {
     } as Receipt.Encoded
   ],
 
+  existingLedgerEntries: [
+    {
+      entry_id: EXISTING_LOT_ID,
+      user_id: TestUsers.USER_2,
+      lot_id: EXISTING_LOT_ID,
+      lot_month: "2025-03-01",
+      amount: 1000,
+      reason: "purchase",
+      operation_type: "payment_settlement",
+      resource_amount: 9.99,
+      resource_unit: "USD",
+      workflow_id: "external-ref-duplicate",
+      product_code: TestProducts.BASIC_PLAN.product_code,
+      expires_at: "2025-04-01T10:00:00Z",
+      created_at: "2025-03-01T10:00:00Z",
+      created_month: "2025-03-01"
+    }
+  ],
+
   // External refs that already exist (for idempotency testing)
   existingExternalRefs: [
     "external-ref-duplicate"
   ]
+} as const
+
+export const SettlementFixtureIds = {
+  EXISTING_LOT_ID,
+  EXISTING_RECEIPT_ID
 } as const
