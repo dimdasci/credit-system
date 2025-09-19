@@ -1,6 +1,6 @@
 import { MerchantContext } from "@credit-system/shared"
-import { DatabaseManager } from "@server/db/DatabaseManager.js"
 import { PurchaseSettlementService } from "@server/services/business/PurchaseSettlementService.js"
+import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
 import { LedgerRepository } from "@server/services/repositories/LedgerRepository.js"
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
 import { ReceiptRepository } from "@server/services/repositories/ReceiptRepository.js"

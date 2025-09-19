@@ -1,8 +1,8 @@
 import { MerchantContext } from "@credit-system/shared"
 import * as SqlSchema from "@effect/sql/SqlSchema"
-import { DatabaseManager } from "@server/db/DatabaseManager.js"
 import { Operation } from "@server/domain/operations/Operation.js"
 import { InvalidRequest, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
+import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
 import { Effect, Schema } from "effect"
 
 // Query options for operation history

@@ -38,19 +38,18 @@ export const DatabaseManagerLive = Layer.effect(
       getConnection: (
         merchantId: string
       ): Effect.Effect<SqlClient.SqlClient, MissingMerchantDatabaseUrlError | ConfigError | SqlError.SqlError> =>
-        Effect.gen(function*(_) {
+        Effect.gen(function*() {
           const prefix = merchantId.substring(0, 4).toUpperCase()
 
           if (poolMap.has(prefix)) {
             const pool = poolMap.get(prefix)!
-            return yield* _(Effect.provide(SqlClient.SqlClient, pool))
+            return yield* Effect.provide(SqlClient.SqlClient, pool)
           }
 
           const envVar = `MERCHANT_${prefix}_DATABASE_URL`
           const dbUrlConfig = Config.redacted(envVar)
 
-          const dbUrl = yield* _(
-            Config.option(dbUrlConfig),
+          const dbUrl = yield* Config.option(dbUrlConfig).pipe(
             Effect.flatMap(Option.match({
               onNone: () => Effect.fail(new MissingMerchantDatabaseUrlError({ merchantId, envVar })),
               onSome: (url) => Effect.succeed(url)
@@ -60,7 +59,7 @@ export const DatabaseManagerLive = Layer.effect(
           const newPool = factory.make(dbUrl)
           poolMap.set(prefix, newPool)
 
-          return yield* _(Effect.provide(SqlClient.SqlClient, newPool))
+          return yield* Effect.provide(SqlClient.SqlClient, newPool)
         })
     })
   })

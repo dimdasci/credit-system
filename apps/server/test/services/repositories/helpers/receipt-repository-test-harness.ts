@@ -1,5 +1,5 @@
 import { MerchantContext } from "@credit-system/shared"
-import { DatabaseManager } from "@server/db/DatabaseManager.js"
+import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
 import { ReceiptRepository as ReceiptRepositoryService } from "@server/services/repositories/ReceiptRepository.js"
 import { Effect, Layer } from "effect"
 

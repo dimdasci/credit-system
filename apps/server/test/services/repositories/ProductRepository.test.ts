@@ -1,5 +1,5 @@
 import { MerchantContext } from "@credit-system/shared"
-import { DatabaseManager } from "@server/db/DatabaseManager.js"
+import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
 import { Effect, Layer, Option } from "effect"
 import { beforeEach, describe, expect, it } from "vitest"
@@ -197,7 +197,7 @@ const MockMerchantContextLayer = Layer.succeed(MerchantContext, {
 
 const TestLayer = Layer.provide(
   Layer.provide(
-        ProductRepository.Default,
+    ProductRepository.Default,
     MockDatabaseManagerLayer
   ),
   MockMerchantContextLayer

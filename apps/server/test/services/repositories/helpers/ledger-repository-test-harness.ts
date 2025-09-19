@@ -1,5 +1,5 @@
 import { MerchantContext } from "@credit-system/shared"
-import { DatabaseManager } from "@server/db/DatabaseManager.js"
+import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
 import { LedgerRepository as LedgerRepositoryService } from "@server/services/repositories/LedgerRepository.js"
 import type { LedgerQueryOptions } from "@server/services/repositories/LedgerRepository.js"
 import { Effect, Layer } from "effect"

@@ -1,5 +1,5 @@
 import { MerchantContext } from "@credit-system/shared"
-import { DatabaseManager } from "@server/db/DatabaseManager.js"
+import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
 import { OperationRepository as OperationRepositoryService } from "@server/services/repositories/OperationRepository.js"
 import type { OperationQueryOptions } from "@server/services/repositories/OperationRepository.js"
 import { Effect, Layer } from "effect"

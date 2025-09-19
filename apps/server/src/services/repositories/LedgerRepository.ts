@@ -1,11 +1,11 @@
 import { MerchantContext } from "@credit-system/shared"
 import * as SqlSchema from "@effect/sql/SqlSchema"
-import { DatabaseManager } from "@server/db/DatabaseManager.js"
 import { LedgerEntry } from "@server/domain/credit-ledger/LedgerEntry.js"
 import { Lot } from "@server/domain/credit-ledger/Lot.js"
 import type { Product } from "@server/domain/products/Product.js"
 import { InsufficientBalance, InvalidRequest, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
 import { createMonthDate } from "@server/domain/shared/MonthDate.js"
+import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
 import { Effect, Schema } from "effect"
 import { randomUUID } from "node:crypto"
 
