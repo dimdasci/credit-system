@@ -1,11 +1,10 @@
 import { MerchantContext } from "@credit-system/shared"
 import * as SqlSchema from "@effect/sql/SqlSchema"
 import { DatabaseManager } from "@server/db/DatabaseManager.js"
-import { DatabaseManagerLive, PgLayerFactoryLive } from "@server/db/DatabaseManagerImpl.js"
 import { Receipt } from "@server/domain/receipts/Receipt.js"
 import type { DomainError } from "@server/domain/shared/DomainErrors.js"
 import { InvalidRequest, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Schema } from "effect"
 
 // Query options for receipt history
 export interface ReceiptQueryOptions {
@@ -27,6 +26,9 @@ export interface ReceiptRepositoryContract {
   // Lot-based queries (one receipt per purchase lot)
   getReceiptByLot: (lot_id: string) => Effect.Effect<Receipt | null, DomainError>
   hasReceiptForLot: (lot_id: string) => Effect.Effect<boolean, DomainError>
+
+  // External reference queries (for idempotency)
+  getReceiptByExternalRef: (external_ref: string) => Effect.Effect<Receipt | null, DomainError>
 
   // User receipt history
   getUserReceipts: (user_id: string, options?: ReceiptQueryOptions) => Effect.Effect<Array<Receipt>, DomainError>
@@ -183,6 +185,26 @@ export class ReceiptRepository extends Effect.Service<ReceiptRepository>()(
           return yield* Schema.decodeUnknown(Receipt)(result[0])
         })
 
+      const _getReceiptByExternalRef = (external_ref: string) =>
+        Effect.gen(function*() {
+          const sql = yield* db.getConnection(merchantContext.merchantId)
+
+          const result = yield* sql<Receipt.Encoded>`
+            SELECT r.* FROM receipts r
+            INNER JOIN ledger_entries le ON r.lot_id = le.lot_id AND r.lot_created_month = le.lot_month
+            WHERE le.workflow_id = ${external_ref}
+              AND le.reason = 'purchase'
+              AND le.entry_id = le.lot_id
+            LIMIT 1
+          `
+
+          if (result.length === 0) {
+            return null
+          }
+
+          return yield* Schema.decodeUnknown(Receipt)(result[0])
+        })
+
       const _getUserReceipts = SqlSchema.findAll({
         Request: Schema.Struct({
           user_id: Schema.String,
@@ -260,6 +282,9 @@ export class ReceiptRepository extends Effect.Service<ReceiptRepository>()(
 
         // Lot-based queries
         getReceiptByLot: (lot_id: string) => _getReceiptByLot(lot_id).pipe(Effect.mapError(mapDatabaseError)),
+
+        getReceiptByExternalRef: (external_ref: string) =>
+          _getReceiptByExternalRef(external_ref).pipe(Effect.mapError(mapDatabaseError)),
 
         hasReceiptForLot: (lot_id: string) =>
           Effect.gen(function*() {
@@ -543,7 +568,6 @@ export class ReceiptRepository extends Effect.Service<ReceiptRepository>()(
             }
           }).pipe(Effect.mapError(mapDatabaseError))
       }
-    }),
-    dependencies: [Layer.provide(DatabaseManagerLive, PgLayerFactoryLive)]
+    })
   }
 ) {}

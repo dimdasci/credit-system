@@ -1,6 +1,7 @@
 import { ServerConfig } from "@credit-system/shared"
 import { HttpApiBuilder, HttpMiddleware, HttpServer } from "@effect/platform"
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
+import { DatabaseManagerLive, PgLayerFactoryLive } from "@server/db/DatabaseManagerImpl.js"
 import { ConfigProvider, Effect, Layer } from "effect"
 import { createServer } from "node:http"
 import { ApiLive } from "./Api.js"
@@ -18,9 +19,12 @@ const NodeServerFromConfig = Layer.unwrapEffect(
   })
 ).pipe(Layer.provide(EnvProvider))
 
+const DatabaseLive = Layer.provide(DatabaseManagerLive, PgLayerFactoryLive)
+
 const HttpLive = HttpApiBuilder.serve(HttpMiddleware.logger).pipe(
   Layer.provide(ApiLive),
   Layer.provide(TokenServiceLive),
+  Layer.provide(DatabaseLive),
   HttpServer.withLogAddress,
   Layer.provide(NodeServerFromConfig)
 )

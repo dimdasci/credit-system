@@ -1,10 +1,9 @@
 import { MerchantContext } from "@credit-system/shared"
 import * as SqlSchema from "@effect/sql/SqlSchema"
 import { DatabaseManager } from "@server/db/DatabaseManager.js"
-import { DatabaseManagerLive, PgLayerFactoryLive } from "@server/db/DatabaseManagerImpl.js"
 import { Operation } from "@server/domain/operations/Operation.js"
 import { InvalidRequest, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Schema } from "effect"
 
 // Query options for operation history
 export interface OperationQueryOptions {
@@ -491,7 +490,6 @@ export class OperationRepository extends Effect.Service<OperationRepository>()(
             }
           })
       }
-    }),
-    dependencies: [Layer.provide(DatabaseManagerLive, PgLayerFactoryLive)]
+    })
   }
 ) {}
