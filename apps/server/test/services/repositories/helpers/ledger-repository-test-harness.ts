@@ -308,7 +308,7 @@ const MockMerchantContextLayer = Layer.succeed(MerchantContext, {
 
 export const TestLayer = Layer.provide(
   Layer.provide(
-    LedgerRepositoryService.DefaultWithoutDependencies,
+    LedgerRepositoryService.Default,
     MockDatabaseManagerLayer
   ),
   MockMerchantContextLayer

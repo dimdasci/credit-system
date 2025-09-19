@@ -60,15 +60,16 @@ const mockSqlClient = {
 
     mockQueryContext.lastQueryText = fullQuery
     mockQueryContext.lastQueryIncludesLimit = fullQuery.toUpperCase().includes("LIMIT") ||
-      values.some(v => v && typeof v === "object" && (v as any).strings?.some((s: string) => s.toUpperCase().includes("LIMIT")))
+      values.some((v) =>
+        v && typeof v === "object" && (v as any).strings?.some((s: string) => s.toUpperCase().includes("LIMIT"))
+      )
     mockQueryContext.lastQueryIncludesDateFilter = fullQuery.includes("issued_at")
 
     // Enhanced year detection - check values, query text, and fragment strings
-    mockQueryContext.lastQueryIncludesYear =
-      values.some((v) => typeof v === "number" && v >= 2020 && v <= 2030) ||
+    mockQueryContext.lastQueryIncludesYear = values.some((v) => typeof v === "number" && v >= 2020 && v <= 2030) ||
       /20[2-3][0-9]/.test(fullQuery) ||
-      strings.some(s => /20[2-3][0-9]/.test(s)) ||
-      values.some(v => v && typeof v === "object" && (v as any).strings?.some((s: string) => /20[2-3][0-9]/.test(s)))
+      strings.some((s) => /20[2-3][0-9]/.test(s)) ||
+      values.some((v) => v && typeof v === "object" && (v as any).strings?.some((s: string) => /20[2-3][0-9]/.test(s)))
 
     // Check for INSERT operations
     if (fullQuery.toUpperCase().includes("INSERT")) {
@@ -129,7 +130,7 @@ const MockMerchantContextLayer = Layer.succeed(MerchantContext, {
 
 export const TestLayer = Layer.provide(
   Layer.provide(
-    ReceiptRepositoryService.DefaultWithoutDependencies,
+    ReceiptRepositoryService.Default,
     MockDatabaseManager
   ),
   MockMerchantContextLayer
