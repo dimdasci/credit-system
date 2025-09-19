@@ -1,6 +1,6 @@
 import { AdminPublicRpcs, AdminRpcs, HealthRpcs, VersionRpcs } from "@credit-system/rpc"
 import { ServerConfig } from "@credit-system/shared"
-import { HttpLayerRouter, HttpMiddleware } from "@effect/platform"
+import { HttpLayerRouter } from "@effect/platform"
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
 import { RpcSerialization, RpcServer } from "@effect/rpc"
 import { ConfigProvider, Effect, Layer } from "effect"
