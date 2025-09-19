@@ -1,12 +1,11 @@
-import { HttpApi, HttpApiEndpoint, HttpApiGroup } from "@effect/platform"
+import { Rpc, RpcGroup } from "@effect/rpc"
 import { Schema } from "effect"
 
 export const Health = Schema.Struct({ status: Schema.Literal("ok") })
 
-export const HealthApiGroup = HttpApiGroup.make("health")
-  .add(
-    HttpApiEndpoint.get("getHealth", "/health")
-      .addSuccess(Health)
-  )
+export const getHealthRpc = Rpc.make("getHealth", {
+  success: Health,
+  error: Schema.String
+})
 
-export const HealthApi = HttpApi.make("api").add(HealthApiGroup)
+export const HealthRpcs = RpcGroup.make(getHealthRpc)

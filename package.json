@@ -57,6 +57,7 @@
     "patchedDependencies": {}
   },
   "dependencies": {
+    "@effect/rpc": "^0.69.4",
     "@types/jsonwebtoken": "^9.0.10",
     "jsonwebtoken": "^9.0.2"
   }

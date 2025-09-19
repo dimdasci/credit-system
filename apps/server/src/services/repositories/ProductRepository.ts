@@ -1,8 +1,8 @@
 import { MerchantContext } from "@credit-system/shared"
 import * as SqlSchema from "@effect/sql/SqlSchema"
 import { Effect, Schema } from "effect"
-import { DatabaseManager } from "../../db/DatabaseManager.js"
 import { Product } from "../../domain/products/Product.js"
+import { DatabaseManager } from "../external/DatabaseManager.js"
 
 export class ProductRepository extends Effect.Service<ProductRepository>()(
   "ProductRepository",

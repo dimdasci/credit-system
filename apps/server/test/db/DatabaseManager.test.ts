@@ -1,6 +1,6 @@
 import { SqlClient } from "@effect/sql"
-import { DatabaseManager, MissingMerchantDatabaseUrlError } from "@server/db/DatabaseManager.js"
-import { DatabaseManagerLive, PgLayerFactory } from "@server/db/DatabaseManagerImpl.js"
+import { DatabaseManager, MissingMerchantDatabaseUrlError } from "@server/services/external/DatabaseManager.js"
+import { DatabaseManagerLive, PgLayerFactory } from "@server/services/external/DatabaseManagerImpl.js"
 import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect"
 import { describe, expect, it, vi } from "vitest"
 
