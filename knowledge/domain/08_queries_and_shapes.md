@@ -100,13 +100,14 @@ Notes:
 - `issued_at`
 - `purchase`: `{ product_code, country, currency, amount }`
 - `external_ref`
-- `download_url`
 Internal joins use `(lot_id, lot_created_month)`.
 
 ### 4.2 `GetReceipt`
 **Purpose:** Retrieve a specific receipt.
 **Inputs:** `receipt_id`
-**Output:** document handle/URL plus metadata.
+**Output:** metadata required for upstream receipt rendering.
+
+*Note:* Receipt generation, rendering, and delivery are responsibilities of the upstream application. The credit system only exposes receipt metadata; it does not persist or return download URLs.
 
 ---
 
