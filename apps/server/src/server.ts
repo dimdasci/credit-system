@@ -7,8 +7,10 @@ import { ConfigProvider, Effect, Layer } from "effect"
 import { createServer } from "node:http"
 import { AdminHandlers, AdminPublicHandlers, ProtectedAdminRpcs } from "./application/rpc/handlers/AdminHandler.js"
 import { HealthHandlers } from "./application/rpc/handlers/HealthHandler.js"
+import { ProtectedPurchaseRpcs, PurchaseHandlers } from "./application/rpc/handlers/PurchaseHandler.js"
 import { VersionHandlers } from "./application/rpc/handlers/VersionHandler.js"
 import { AuthorizationLive } from "./application/rpc/middleware/AuthorizationMiddleware.js"
+import { PurchaseSettlementService } from "./services/business/PurchaseSettlementService.js"
 import { TokenServiceLive } from "./services/business/TokenService.js"
 import { DatabaseManagerLive, PgLayerFactoryLive } from "./services/external/DatabaseManagerImpl.js"
 
@@ -31,6 +33,7 @@ const AllRpcs = HealthRpcs
   .merge(VersionRpcs)
   .merge(AdminPublicRpcs)
   .merge(ProtectedAdminRpcs)
+  .merge(ProtectedPurchaseRpcs)
 
 // Create single RPC endpoint
 const RpcLayers = RpcServer.layerHttpRouter({
@@ -46,6 +49,8 @@ const HttpLive = HttpLayerRouter.serve(RpcLayers, {}).pipe(
   Layer.provide(AdminPublicHandlers),
   Layer.provide(AuthorizationLive),
   Layer.provide(AdminHandlers),
+  Layer.provide(PurchaseHandlers),
+  Layer.provide(PurchaseSettlementService.Default),
   Layer.provide(TokenServiceLive),
   Layer.provide(DatabaseLive),
   Layer.provide(NodeServerFromConfig)
