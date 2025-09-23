@@ -100,13 +100,14 @@ Notes:
 - `issued_at`
 - `purchase`: `{ product_code, country, currency, amount }`
 - `external_ref`
-- `download_url`
 Internal joins use `(lot_id, lot_created_month)`.
 
 ### 4.2 `GetReceipt`
 **Purpose:** Retrieve a specific receipt.
 **Inputs:** `receipt_id`
-**Output:** document handle/URL plus metadata.
+**Output:** metadata required for upstream receipt rendering.
+
+*Note:* Receipt generation, rendering, and delivery are responsibilities of the upstream application. The credit system only exposes receipt metadata; it does not persist or return download URLs.
 
 ---
 
@@ -123,9 +124,27 @@ Internal joins use `(lot_id, lot_created_month)`.
 **Output:**
 - `user_id`
 - `balance_credits`
+- `total_credits` (lifetime credits earned)
+- `total_debits` (lifetime credits consumed, shown as positive)
 - `account_lock?`
-- `active_lots` (summary)
 - `recent_activity` (last N ledger entries)
+
+**Note:** For detailed lot information (balances, expiration dates), use dedicated `GetActiveLots` query which provides intelligent partition scanning for optimal performance.
+
+### 5.3 `GetActiveLots`
+**Purpose:** Retrieve detailed information about user's active credit lots with expiration dates and remaining balances.
+**Inputs:** `user_id`, `at_time?` (defaults to current time)
+**Output (per active lot):**
+- `lot_id`
+- `lot_month` (partition identifier)
+- `initial_credits` (original lot size)
+- `remaining_balance` (current available credits)
+- `total_debits` (total consumed from this lot)
+- `expires_at` (expiration timestamp)
+- `created_at` (lot issuance timestamp)
+- `product_code` (originating product)
+
+**Performance:** Uses intelligent partition scanning that dynamically calculates the oldest possible active lot based on maximum `access_period_days` from active products, avoiding unnecessary full-table scans.
 
 ---
 

@@ -152,8 +152,7 @@ export const PurchaseSettledSuccess = Schema.Struct({
   receipt: Schema.Struct({
     receiptId: Schema.String,
     receiptNumber: Schema.String, // "R-ACME-2025-0001"
-    issuedAt: Schema.Date,
-    downloadUrl: Schema.optional(Schema.String)
+    issuedAt: Schema.Date
   }),
   userBalance: Schema.Struct({
     balance: Schema.Int,
@@ -474,8 +473,7 @@ export const GetReceiptByIdSuccess = Schema.Struct({
     receiptNumber: Schema.String,
     issuedAt: Schema.Date,
     userId: Schema.String,
-    lotId: Schema.String,
-    downloadUrl: Schema.optional(Schema.String)
+    lotId: Schema.String
   })
 })
 
@@ -508,8 +506,7 @@ export const ListReceiptsSuccess = Schema.Struct({
     receiptId: Schema.String,
     receiptNumber: Schema.String,
     issuedAt: Schema.Date,
-    lotId: Schema.String,
-    downloadUrl: Schema.optional(Schema.String)
+    lotId: Schema.String
   })),
   pagination: Schema.Struct({
     total: Schema.Number,
