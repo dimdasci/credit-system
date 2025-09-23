@@ -141,16 +141,18 @@ CREATE TRIGGER auto_archive_operation_types_trigger
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-    PERFORM cron.schedule('balance-check', '0 2 * * *', $$
-      WITH discrepancies AS (
-        SELECT ub.user_id, ub.balance - COALESCE(SUM(le.amount), 0) as diff
-        FROM user_balance ub
-        LEFT JOIN ledger_entries le ON le.user_id = ub.user_id
-        GROUP BY ub.user_id, ub.balance
-        HAVING ABS(ub.balance - COALESCE(SUM(le.amount), 0)) > 0
-      )
-      INSERT INTO balance_audit (check_date, discrepancies)
-      SELECT NOW(), COUNT(*) FROM discrepancies;
-    $$);
+    IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'balance-check') THEN
+      PERFORM cron.schedule('balance-check', '0 2 * * *', $$
+        WITH discrepancies AS (
+          SELECT ub.user_id, ub.balance - COALESCE(SUM(le.amount), 0) as diff
+          FROM user_balance ub
+          LEFT JOIN ledger_entries le ON le.user_id = ub.user_id
+          GROUP BY ub.user_id, ub.balance
+          HAVING ABS(ub.balance - COALESCE(SUM(le.amount), 0)) > 0
+        )
+        INSERT INTO balance_audit (check_date, discrepancies)
+        SELECT NOW(), COUNT(*) FROM discrepancies;
+      $$);
+    END IF;
   END IF;
 END $$;
