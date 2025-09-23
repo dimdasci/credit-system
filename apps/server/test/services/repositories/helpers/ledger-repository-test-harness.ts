@@ -153,6 +153,51 @@ const mockSqlClient = {
       return Effect.succeed(userEntries)
     }
 
+    // Handle cached balance query with total_credits and total_debits (check first for specificity)
+    if (
+      query.includes("SELECT balance, total_credits, total_debits") &&
+      query.includes("FROM user_balance") &&
+      resolvedValues.length === 1
+    ) {
+      const userId = resolvedValues[0] as string
+      const userEntries = TestLedgerEntriesArray.filter((e) => e.user_id === userId)
+
+      const balance = userEntries.reduce((sum, e) => sum + e.amount, 0)
+      const totalCredits = userEntries.filter((e) => e.amount > 0).reduce((sum, e) => sum + e.amount, 0)
+      const totalDebits = userEntries.filter((e) => e.amount < 0).reduce((sum, e) => sum + e.amount, 0) // Domain compliant - negative values
+
+      return Effect.succeed([{
+        balance,
+        total_credits: totalCredits,
+        total_debits: totalDebits
+      }])
+    }
+
+    // Handle new cached balance query
+    if (
+      query.includes("SELECT balance FROM user_balance WHERE user_id = ?")
+    ) {
+      const userId = resolvedValues[0] as string
+      const balance = TestLedgerEntriesArray
+        .filter((e) => e.user_id === userId)
+        .reduce((sum, e) => sum + e.amount, 0)
+
+      return Effect.succeed([{ balance }])
+    }
+
+    // Handle products max access_period_days query for intelligent partition scanning
+    if (
+      query.includes("SELECT MAX(access_period_days) as max_access_period_days") &&
+      query.includes("FROM products") &&
+      query.includes("WHERE archived_at IS NULL")
+    ) {
+      // Return max access period from test products (60 days from test data)
+      return Effect.succeed([{ max_access_period_days: 60 }])
+    }
+
+    // Handle lot counts query removed - no longer part of getUserLedgerSummary
+
+    // Legacy balance query (keep for backwards compatibility)
     if (
       query.includes("SELECT COALESCE(SUM(amount), 0) as balance") &&
       query.includes("FROM ledger_entries") &&
@@ -238,28 +283,24 @@ const mockSqlClient = {
       return Effect.succeed(oldestLot ? [oldestLot] : [])
     }
 
+    // Handle month-filtered getUserLedgerSummary query (simplified - no lot counts)
     if (
       query.includes("SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as total_credits") &&
-      query.includes("SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) as total_debits") &&
-      query.includes("COALESCE(SUM(amount), 0) as current_balance")
+      query.includes("SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) as total_debits") &&
+      query.includes("COALESCE(SUM(amount), 0) as current_balance") &&
+      !query.includes("active_lots") // Ensure this is the new simplified query
     ) {
       const userId = resolvedValues[0] as string
       const userEntries = TestLedgerEntriesArray.filter((e) => e.user_id === userId)
 
       const totalCredits = userEntries.filter((e) => e.amount > 0).reduce((sum, e) => sum + e.amount, 0)
-      const totalDebits = userEntries.filter((e) => e.amount < 0).reduce((sum, e) => sum + Math.abs(e.amount), 0)
+      const totalDebits = Math.abs(userEntries.filter((e) => e.amount < 0).reduce((sum, e) => sum + e.amount, 0)) // Domain compliant calculation, but interface returns positive
       const currentBalance = userEntries.reduce((sum, e) => sum + e.amount, 0)
-
-      const userLots = Object.values(TestLotSummaries).filter((lot) => lot.user_id === userId)
-      const activeLots = userLots.filter((lot) => !lot.is_expired).length
-      const expiredLots = userLots.filter((lot) => lot.is_expired).length
 
       return Effect.succeed([{
         total_credits: totalCredits,
         total_debits: totalDebits,
-        current_balance: currentBalance,
-        active_lots: activeLots,
-        expired_lots: expiredLots
+        current_balance: currentBalance
       }])
     }
 

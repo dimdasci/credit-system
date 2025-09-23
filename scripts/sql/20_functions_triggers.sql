@@ -70,12 +70,17 @@ CREATE TRIGGER idempotency_touch_updated_at_trigger
 -- Balance cache maintenance
 CREATE OR REPLACE FUNCTION update_user_balance()
 RETURNS trigger AS $$
+DECLARE
+  credit_amount INTEGER := CASE WHEN NEW.amount > 0 THEN NEW.amount ELSE 0 END;
+  debit_amount INTEGER := CASE WHEN NEW.amount < 0 THEN NEW.amount ELSE 0 END;  -- Keep negative
 BEGIN
-  INSERT INTO user_balance (user_id, balance, last_entry_id, last_entry_month)
-  VALUES (NEW.user_id, NEW.amount, NEW.entry_id, NEW.created_month)
+  INSERT INTO user_balance (user_id, balance, total_credits, total_debits, last_entry_id, last_entry_month)
+  VALUES (NEW.user_id, NEW.amount, credit_amount, debit_amount, NEW.entry_id, NEW.created_month)
   ON CONFLICT (user_id)
   DO UPDATE SET
     balance = user_balance.balance + NEW.amount,
+    total_credits = user_balance.total_credits + credit_amount,
+    total_debits = user_balance.total_debits + debit_amount,  -- Domain compliant
     last_updated = now(),
     last_entry_id = NEW.entry_id,
     last_entry_month = NEW.created_month;
@@ -131,3 +136,21 @@ CREATE TRIGGER auto_archive_operation_types_trigger
   FOR EACH ROW EXECUTE FUNCTION auto_archive_operation_types();
 
 -- Receipt numbering function and sequence moved to top of file
+
+-- Balance consistency check cron job
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    PERFORM cron.schedule('balance-check', '0 2 * * *', $$
+      WITH discrepancies AS (
+        SELECT ub.user_id, ub.balance - COALESCE(SUM(le.amount), 0) as diff
+        FROM user_balance ub
+        LEFT JOIN ledger_entries le ON le.user_id = ub.user_id
+        GROUP BY ub.user_id, ub.balance
+        HAVING ABS(ub.balance - COALESCE(SUM(le.amount), 0)) > 0
+      )
+      INSERT INTO balance_audit (check_date, discrepancies)
+      SELECT NOW(), COUNT(*) FROM discrepancies;
+    $$);
+  END IF;
+END $$;

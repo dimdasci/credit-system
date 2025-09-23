@@ -147,6 +147,8 @@ CREATE TABLE IF NOT EXISTS receipts (
 CREATE TABLE IF NOT EXISTS user_balance (
   user_id       text PRIMARY KEY,
   balance       integer NOT NULL DEFAULT 0,
+  total_credits integer NOT NULL DEFAULT 0,
+  total_debits  integer NOT NULL DEFAULT 0,
   last_updated  timestamptz NOT NULL DEFAULT now(),
   last_entry_id uuid NOT NULL,
   last_entry_month date NOT NULL,
@@ -169,4 +171,25 @@ CREATE TABLE IF NOT EXISTS idempotency_tracking (
     (state = 'SUCCEEDED' AND result_data IS NOT NULL) OR
     (state IN ('FAILED_RETRIABLE','FAILED_FINAL') AND error_data IS NOT NULL)
   )
+);
+
+-- Balance invariant constraint (add if missing)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'balance_invariant'
+      AND conrelid = 'user_balance'::regclass
+  ) THEN
+    ALTER TABLE user_balance
+      ADD CONSTRAINT balance_invariant
+      CHECK (balance = total_credits + total_debits);
+  END IF;
+END$$;
+
+-- Balance audit table for consistency checks
+CREATE TABLE IF NOT EXISTS balance_audit (
+  audit_id      serial PRIMARY KEY,
+  check_date    timestamptz NOT NULL DEFAULT now(),
+  discrepancies integer NOT NULL DEFAULT 0
 );

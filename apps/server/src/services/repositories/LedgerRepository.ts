@@ -209,9 +209,22 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
       const fetchActiveLotSummaries = (user_id: string, at_time: Date) =>
         Effect.gen(function*() {
           const sql = yield* db.getConnection(merchantContext.merchantId)
+
+          // Get maximum access_period_days from active products to calculate precise partition range
+          const maxExpirationResult = yield* sql<{ max_access_period_days: number | null }>`
+            SELECT MAX(access_period_days) as max_access_period_days
+            FROM products
+            WHERE archived_at IS NULL
+          `
+
+          const maxExpirationDays = maxExpirationResult[0]?.max_access_period_days || 365 // Fallback if no products
+          const oldestPossibleMonth = createMonthDate(
+            new Date(at_time.getTime() - (maxExpirationDays * 24 * 60 * 60 * 1000))
+          )
+
           return yield* sql<LotSummary>`
             WITH lot_balances AS (
-              SELECT 
+              SELECT
                 lot_id,
                 lot_month,
                 user_id,
@@ -220,11 +233,12 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
                 MIN(CASE WHEN entry_id = lot_id THEN product_code END) as product_code,
                 MIN(CASE WHEN entry_id = lot_id THEN expires_at END) as expires_at,
                 MIN(CASE WHEN entry_id = lot_id THEN created_at END) as issued_at
-              FROM ledger_entries 
+              FROM ledger_entries
               WHERE user_id = ${user_id}
+                AND created_month >= ${oldestPossibleMonth}
               GROUP BY lot_id, lot_month, user_id
             )
-            SELECT 
+            SELECT
               lot_id,
               lot_month,
               user_id,
@@ -249,7 +263,7 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
 
         getLedgerHistory: (user_id: string, options?: LedgerQueryOptions) => _getLedgerHistory({ user_id, options }),
 
-        // Balance calculations across partitions
+        // Balance calculations using cached balance
         getUserBalance: (user_id: string): Effect.Effect<number, InvalidRequest | ServiceUnavailable> =>
           Effect.gen(function*() {
             // Validate input parameters
@@ -267,9 +281,7 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
               .pipe(Effect.mapError(mapDatabaseError))
 
             const result = yield* sql<{ balance: number }>`
-              SELECT COALESCE(SUM(amount), 0) as balance
-              FROM ledger_entries
-              WHERE user_id = ${user_id}
+              SELECT balance FROM user_balance WHERE user_id = ${user_id}
             `.pipe(Effect.mapError(mapDatabaseError))
 
             return result[0]?.balance || 0
@@ -700,51 +712,51 @@ export class LedgerRepository extends Effect.Service<LedgerRepository>()(
               ? sql`AND created_month = ${createMonthDate(month)}`
               : sql``
 
+            // When no month filter, use cached balance for O(1) performance
+            if (!month) {
+              const balanceResult = yield* sql<{
+                balance: number
+                total_credits: number
+                total_debits: number
+              }>`
+                SELECT balance, total_credits, total_debits
+                FROM user_balance
+                WHERE user_id = ${user_id}
+              `
+
+              const balance = balanceResult[0] || { balance: 0, total_credits: 0, total_debits: 0 }
+
+              return {
+                total_credits: balance.total_credits,
+                total_debits: Math.abs(balance.total_debits), // Convert to positive for interface
+                current_balance: balance.balance
+              }
+            }
+
+            // For month-filtered queries, fall back to expensive calculation
             const result = yield* sql<{
               total_credits: number
               total_debits: number
               current_balance: number
-              active_lots: number
-              expired_lots: number
             }>`
-              WITH entry_summary AS (
-                SELECT 
-                  SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as total_credits,
-                  SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) as total_debits,
-                  COALESCE(SUM(amount), 0) as current_balance
-                FROM ledger_entries
-                WHERE user_id = ${user_id} ${monthFilter}
-              ),
-              lot_counts AS (
-                SELECT 
-                  COUNT(CASE WHEN expires_at > NOW() AND balance > 0 THEN 1 END) as active_lots,
-                  COUNT(CASE WHEN expires_at <= NOW() AND balance > 0 THEN 1 END) as expired_lots
-                FROM (
-                  SELECT 
-                    lot_id,
-                    lot_month,
-                    SUM(amount) as balance,
-                    MIN(CASE WHEN entry_id = lot_id THEN expires_at END) as expires_at
-                  FROM ledger_entries 
-                  WHERE user_id = ${user_id} ${monthFilter}
-                  GROUP BY lot_id, lot_month
-                ) lot_balances
-              )
-              SELECT 
-                es.total_credits,
-                es.total_debits,
-                es.current_balance,
-                lc.active_lots,
-                lc.expired_lots
-              FROM entry_summary es, lot_counts lc
+              SELECT
+                SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as total_credits,
+                SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) as total_debits,
+                COALESCE(SUM(amount), 0) as current_balance
+              FROM ledger_entries
+              WHERE user_id = ${user_id} ${monthFilter}
             `
 
-            return result[0] || {
+            const summary = result[0] || {
               total_credits: 0,
               total_debits: 0,
-              current_balance: 0,
-              active_lots: 0,
-              expired_lots: 0
+              current_balance: 0
+            }
+
+            // Convert total_debits to positive for interface (while maintaining domain-compliant calculation)
+            return {
+              ...summary,
+              total_debits: Math.abs(summary.total_debits)
             }
           })
       }
