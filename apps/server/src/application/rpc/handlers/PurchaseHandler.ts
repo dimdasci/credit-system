@@ -11,21 +11,18 @@ export const PurchaseHandlers = ProtectedPurchaseRpcs.toLayer({
   purchaseSettled: (request) =>
     Effect.gen(function*() {
       // 2. Convert RPC input to service request format
+      const taxBreakdown = request.settlementData.pricingSnapshot.taxBreakdown
+
       const pricingSnapshot = {
         country: request.settlementData.pricingSnapshot.country,
         currency: request.settlementData.pricingSnapshot.currency,
         amount: request.settlementData.pricingSnapshot.amount,
-        ...(request.settlementData.pricingSnapshot.taxBreakdown && {
+        ...(taxBreakdown && {
           tax_breakdown: {
-            ...(request.settlementData.pricingSnapshot.taxBreakdown.rate !== undefined && {
-              rate: request.settlementData.pricingSnapshot.taxBreakdown.rate
-            }),
-            ...(request.settlementData.pricingSnapshot.taxBreakdown.amount !== undefined && {
-              amount: request.settlementData.pricingSnapshot.taxBreakdown.amount
-            }),
-            ...(request.settlementData.pricingSnapshot.taxBreakdown.note !== undefined && {
-              note: request.settlementData.pricingSnapshot.taxBreakdown.note
-            })
+            type: taxBreakdown.type,
+            ...(taxBreakdown.rate !== undefined && { rate: taxBreakdown.rate }),
+            ...(taxBreakdown.amount !== undefined && { amount: taxBreakdown.amount }),
+            ...(taxBreakdown.note !== undefined && { note: taxBreakdown.note })
           }
         })
       }
@@ -71,6 +68,27 @@ export const PurchaseHandlers = ProtectedPurchaseRpcs.toLayer({
               error.reason === "pricing_changed" ?
               "pricing_mismatch" as const :
               error.reason as any
+          }
+        }
+
+        const duplicateAdminAction = error as any
+
+        if (
+          duplicateAdminAction &&
+          typeof duplicateAdminAction === "object" &&
+          duplicateAdminAction._tag === "DuplicateAdminAction"
+        ) {
+          return {
+            _tag: "DuplicateSettlement" as const,
+            externalRef: duplicateAdminAction.external_ref ?? request.settlementData.externalRef,
+            existingLotId: "existing_lot_id" in duplicateAdminAction &&
+                typeof duplicateAdminAction.existing_lot_id === "string" ?
+              duplicateAdminAction.existing_lot_id :
+              "",
+            existingReceiptId: "existing_receipt_id" in duplicateAdminAction &&
+                typeof duplicateAdminAction.existing_receipt_id === "string" ?
+              duplicateAdminAction.existing_receipt_id :
+              ""
           }
         }
 

@@ -82,7 +82,7 @@ export const TestPricingSnapshots = {
     country: "US",
     currency: "USD",
     amount: 9.99,
-    tax_breakdown: { rate: 0.0825, amount: 0.82, note: "Sales tax" }
+    tax_breakdown: { type: "vat", rate: 0.0825, amount: 0.82, note: "Sales tax" }
   } as PricingSnapshot,
   VALID_FALLBACK_PRICING: {
     country: "CA",
@@ -93,7 +93,7 @@ export const TestPricingSnapshots = {
     country: "US",
     currency: "USD",
     amount: 12.99, // Price changed since checkout
-    tax_breakdown: { rate: 0.0825, amount: 1.07, note: "Sales tax" }
+    tax_breakdown: { type: "vat", rate: 0.0825, amount: 1.07, note: "Sales tax" }
   } as PricingSnapshot,
   UNAVAILABLE_COUNTRY: {
     country: "FR",

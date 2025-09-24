@@ -29,6 +29,7 @@ export interface PricingSnapshot {
 }
 
 export interface TaxBreakdown {
+  type: "vat" | "turnover" | "none"
   rate?: number
   amount?: number
   note?: string
