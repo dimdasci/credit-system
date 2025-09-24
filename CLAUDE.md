@@ -9,6 +9,7 @@ Credit Lodger is a minimal credit ledger service designed for managing user purc
 ## Knowledge Base
 
 The project documentation is available in the `knowledge` directory:
+
 - `knowledge/domain` contains detailed domain requirements, with summary and index in @knowledge/domain/README.md.
 - `knowledge/tech-solution` contains technical solution design and implementation details, @knowledge/tech-solution/README.md.
 - `knowledge/guidelines/project/` contains guidelines for github issues usage.
@@ -40,14 +41,17 @@ Effect.gen(function* (_) {
 
 ```typescript
 // ❌ Forbidden - fake TemplateStringsArray
-const result = yield* sql(Object.assign([query], {raw: [query]}), ...params)
+const result = yield * sql(Object.assign([query], { raw: [query] }), ...params)
 
 // ✅ Correct - conditional SQL fragments (like LedgerRepository)
 const statusFilter = opts.status ? sql`AND status = ${opts.status}` : sql``
 const typeFilter = opts.type ? sql`AND type = ${opts.type}` : sql``
-const limitClause = typeof opts.limit === "number" ? sql`LIMIT ${opts.limit}` : sql``
+const limitClause =
+  typeof opts.limit === "number" ? sql`LIMIT ${opts.limit}` : sql``
 
-const result = yield* sql`
+const result =
+  yield *
+  sql`
   SELECT * FROM table
   WHERE user_id = ${userId}
   ${statusFilter}
@@ -61,8 +65,7 @@ const result = yield* sql`
 ```typescript
 const attachTemplate = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
   if (typeof effect === "object" && effect !== null) {
-    (effect as any).strings = strings
-    (effect as any).values = values
+    ;(effect as any).strings = strings(effect as any).values = values
   }
   return effect
 }
@@ -73,11 +76,12 @@ const attachTemplate = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
 
 Project repository https://github.com/dimdasci/credit-system/. Use MCP tools to work with issues.
 
-Github CLI tool `gh` is available in the project. 
+Github CLI tool `gh` is available in the project.
 
 ### Task Definition Rule:
 
 Use only Acceptance Criteria for functional requirements. Skip Implementation Checklist and Definition of Done unless they add unique value:
+
 - Acceptance Criteria: What the feature must do (user/business perspective)
 - Implementation Checklist: Only if complex technical steps need tracking
 - Definition of Done: Only if non-standard quality gates apply (default: tests pass, code works)
@@ -87,9 +91,12 @@ Default assumption: Tasks are done when they work as specified and tests pass. D
 ## Task Completion Criteria
 
 **CRITICAL**: A task is complete ONLY when ALL of the following conditions are met:
+
 1. No TypeScript compilation errors (`pnpm run check` passes)
 2. No linter errors (`pnpm run lint` passes)
 3. ALL tests pass successfully (`pnpm test` passes)
+4. No TODO/FIXME comments remain in the codebase
+5. No stubs, mocks, or temporary code remain in the codebase
 
 **Failing tests = incomplete implementation.** Never claim a task is complete or "production-ready" when tests are failing. Fix all issues until the entire test suite passes.
 

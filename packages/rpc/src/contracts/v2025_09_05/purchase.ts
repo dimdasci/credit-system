@@ -38,11 +38,6 @@ export const PurchaseSettledSuccess = Schema.Struct({
     issuedAt: Schema.Date
     // Note: No downloadUrl - PDF generation is responsibility of upstream applications
     // per architectural boundary defined in @knowledge/domain/05_receipts_and_tax.md
-  }),
-  userBalance: Schema.Struct({
-    balance: Schema.Int,
-    currency: Schema.Literal("credits"),
-    lastUpdated: Schema.Date
   })
 })
 

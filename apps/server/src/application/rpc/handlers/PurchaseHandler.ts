@@ -57,11 +57,6 @@ export const PurchaseHandlers = ProtectedPurchaseRpcs.toLayer({
           receiptNumber: settlement.receipt.receipt_number,
           issuedAt: new Date(settlement.receipt.issued_at)
           // No downloadUrl - upstream applications handle PDF generation and delivery
-        },
-        userBalance: {
-          balance: 0, // TODO: Calculate current balance from ledger
-          currency: "credits" as const,
-          lastUpdated: new Date()
         }
       }
     }).pipe(
