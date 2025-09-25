@@ -5,6 +5,7 @@ import { Receipt } from "@server/domain/receipts/Receipt.js"
 import type { DuplicateAdminAction } from "@server/domain/shared/DomainErrors.js"
 import { InvalidRequest, ProductUnavailable, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
 import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
+import { MerchantConfigService } from "@server/services/external/MerchantConfigService.js"
 import { LedgerRepository } from "@server/services/repositories/LedgerRepository.js"
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
 import { ReceiptRepository } from "@server/services/repositories/ReceiptRepository.js"
@@ -230,35 +231,35 @@ const resolveExistingSettlement = (request: SettlementRequest) =>
   })
 
 const buildReceipt = (
-  merchantId: string,
   request: SettlementRequest,
   product: Product,
   lot: Lot,
   receiptNumber: string,
   receiptId: string
 ) =>
-  Schema.decode(Receipt)({
-    receipt_id: receiptId,
-    user_id: request.user_id,
-    lot_id: lot.entry_id,
-    lot_created_month: lot.lot_month,
-    receipt_number: receiptNumber,
-    issued_at: request.settled_at.toISOString(),
-    purchase_snapshot: {
-      product_code: product.product_code,
-      product_title: product.title,
-      external_ref: request.external_ref,
-      country: request.pricing_snapshot.country,
-      currency: request.pricing_snapshot.currency,
-      amount: request.pricing_snapshot.amount,
-      tax_breakdown: request.pricing_snapshot.tax_breakdown
-    },
-    merchant_config_snapshot: {
-      merchant_id: merchantId,
-      legal_name: "Credit System LLC",
-      receipt_series_prefix: "R-AM"
-    }
-  }).pipe(Effect.mapError(() => dataCorruptionError()))
+  Effect.gen(function*() {
+    const merchantConfigService = yield* MerchantConfigService
+    const merchantConfig = yield* merchantConfigService.getCurrentMerchantConfig()
+
+    return yield* Schema.decode(Receipt)({
+      receipt_id: receiptId,
+      user_id: request.user_id,
+      lot_id: lot.entry_id,
+      lot_created_month: lot.lot_month,
+      receipt_number: receiptNumber,
+      issued_at: request.settled_at.toISOString(),
+      purchase_snapshot: {
+        product_code: product.product_code,
+        product_title: product.title,
+        external_ref: request.external_ref,
+        country: request.pricing_snapshot.country,
+        currency: request.pricing_snapshot.currency,
+        amount: request.pricing_snapshot.amount,
+        tax_breakdown: request.pricing_snapshot.tax_breakdown
+      },
+      merchant_config_snapshot: merchantConfig.toReceiptSnapshot()
+    }).pipe(Effect.mapError(() => dataCorruptionError()))
+  })
 
 export class PurchaseSettlementService extends Effect.Service<PurchaseSettlementService>()(
   "PurchaseSettlementService",
@@ -305,10 +306,15 @@ export class PurchaseSettlementService extends Effect.Service<PurchaseSettlement
                 }
               )
 
+              const merchantConfigService = yield* MerchantConfigService
+              const merchantConfig = yield* merchantConfigService.getCurrentMerchantConfig()
+
               const receiptId = randomUUID()
-              const receiptNumber = yield* receiptRepo.getNextReceiptNumber("R-AM", request.settled_at.getFullYear())
+              const receiptNumber = yield* receiptRepo.getNextReceiptNumber(
+                merchantConfig.receiptSeriesPrefix,
+                request.settled_at.getFullYear()
+              )
               const receipt = yield* buildReceipt(
-                merchantContext.merchantId,
                 request,
                 product,
                 lot,
@@ -339,7 +345,8 @@ export class PurchaseSettlementService extends Effect.Service<PurchaseSettlement
     dependencies: [
       LedgerRepository.Default,
       ProductRepository.Default,
-      ReceiptRepository.Default
+      ReceiptRepository.Default,
+      MerchantConfigService.Default
     ]
   }
 ) {}
