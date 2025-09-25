@@ -5,6 +5,7 @@ import { LedgerRepository } from "@server/services/repositories/LedgerRepository
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
 import { ReceiptRepository } from "@server/services/repositories/ReceiptRepository.js"
 import { Effect, Layer } from "effect"
+import { TestMerchantConfigServiceLive } from "../../../fixtures/merchant-config.js"
 import { TestSettlementData } from "../../../fixtures/settlement-test-data.js"
 
 export interface MockQueryContext {
@@ -380,7 +381,11 @@ export const withTestLayer = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
     })
   )
 
-  const baseLayer = Layer.mergeAll(mockMerchantContextLayer, mockDatabaseManagerLayer)
+  const baseLayer = Layer.mergeAll(
+    mockMerchantContextLayer,
+    mockDatabaseManagerLayer,
+    TestMerchantConfigServiceLive
+  )
 
   const testLayer = Layer.mergeAll(
     baseLayer,
