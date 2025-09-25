@@ -21,7 +21,6 @@ export const TestMerchantConfigServiceLive = Layer.succeed(
   MerchantConfigService,
   {
     _tag: "MerchantConfigService",
-    getMerchantConfig: () => Effect.succeed(testMerchantConfig),
     getCurrentMerchantConfig: () => Effect.succeed(testMerchantConfig)
   } as any
 )
