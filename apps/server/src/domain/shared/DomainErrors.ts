@@ -232,13 +232,3 @@ export type DomainError =
   | InvalidRequest
   | AuthorizationRequired
   | ServiceUnavailable
-
-export const DomainErrorTypeId: unique symbol = Symbol.for("credit-system/DomainError")
-export type DomainErrorTypeId = typeof DomainErrorTypeId
-
-export declare namespace DomainError {
-  export interface Proto {
-    readonly _tag: "DomainError"
-    readonly [DomainErrorTypeId]: DomainErrorTypeId
-  }
-}
