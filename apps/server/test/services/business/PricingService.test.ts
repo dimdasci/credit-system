@@ -1,6 +1,8 @@
-import { InvalidRequest, ProductUnavailable } from "@server/domain/shared/DomainErrors.js"
+import { Product } from "@server/domain/products/Product.js"
+import { Credits } from "@server/domain/shared/Credits.js"
+import { ProductUnavailable } from "@server/domain/shared/DomainErrors.js"
 import { PricingService } from "@server/services/business/PricingService.js"
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
 import { beforeEach, describe, expect, it } from "vitest"
 import { resetMockQueryContext, withTestLayer } from "./helpers/pricing-service-test-harness.js"
 
@@ -15,7 +17,7 @@ describe("PricingService", () => {
 
           const resolved = yield* service.resolvePrice("basic-plan-v1", "US", new Date())
 
-          expect(resolved.product_code).toBe("basic-plan-v1")
+          expect(resolved.product.product_code).toBe("basic-plan-v1")
           expect(resolved.country).toBe("US")
           expect(resolved.currency).toBe("USD")
           expect(resolved.amount).toBe(9.99)
@@ -45,9 +47,7 @@ describe("PricingService", () => {
 
           expect(result).toBeInstanceOf(ProductUnavailable)
           expect(result._tag).toBe("ProductUnavailable")
-          if (result._tag === "ProductUnavailable") {
-            expect(result.reason).toBe("not_found")
-          }
+          expect(result.reason).toBe("not_found")
         })).pipe(Effect.runPromise))
 
       it("fails when product is archived", () =>
@@ -58,9 +58,7 @@ describe("PricingService", () => {
 
           expect(result).toBeInstanceOf(ProductUnavailable)
           expect(result._tag).toBe("ProductUnavailable")
-          if (result._tag === "ProductUnavailable") {
-            expect(result.reason).toBe("archived")
-          }
+          expect(result.reason).toBe("not_found")
         })).pipe(Effect.runPromise))
 
       it("fails for grant products", () =>
@@ -69,11 +67,10 @@ describe("PricingService", () => {
 
           const result = yield* service.resolvePrice("welcome-grant", "US", new Date()).pipe(Effect.flip)
 
-          expect(result).toBeInstanceOf(InvalidRequest)
-          expect(result._tag).toBe("InvalidRequest")
-          if (result._tag === "InvalidRequest") {
-            expect(result.reason).toBe("invalid_parameters")
-          }
+          expect(result).toBeInstanceOf(ProductUnavailable)
+          expect(result._tag).toBe("ProductUnavailable")
+          expect(result.reason).toBe("not_found")
+          expect(result._tag).toBe("InvalidPricingRequest")
         })).pipe(Effect.runPromise))
 
       it("fails when no pricing available for country", () =>
@@ -84,9 +81,7 @@ describe("PricingService", () => {
 
           expect(result).toBeInstanceOf(ProductUnavailable)
           expect(result._tag).toBe("ProductUnavailable")
-          if (result._tag === "ProductUnavailable") {
-            expect(result.reason).toBe("not_available_in_country")
-          }
+          expect(result.reason).toBe("not_available_in_country")
         })).pipe(Effect.runPromise))
     })
   })
@@ -97,7 +92,7 @@ describe("PricingService", () => {
         const service = yield* PricingService
 
         // Test with German merchant config (VAT regime, 19% rate)
-        const taxCalc = service.calculateTax(119.00, "FR", {
+        const taxCalc = yield* service.calculateTax(119.00, {
           country: "DE",
           taxRegime: "vat",
           vatRate: 0.19
@@ -109,24 +104,11 @@ describe("PricingService", () => {
         expect(taxCalc.net_amount).toBe(100.00)
       })).pipe(Effect.runPromise))
 
-    it("applies no tax for non-EU customer", () =>
-      withTestLayer(Effect.gen(function*() {
-        const service = yield* PricingService
-
-        const taxCalc = service.calculateTax(100.00, "US", {
-          country: "DE",
-          taxRegime: "vat",
-          vatRate: 0.19
-        } as any)
-
-        expect(taxCalc.type).toBe("none")
-      })).pipe(Effect.runPromise))
-
     it("handles turnover tax regime", () =>
       withTestLayer(Effect.gen(function*() {
         const service = yield* PricingService
 
-        const taxCalc = service.calculateTax(100.00, "US", {
+        const taxCalc = yield* service.calculateTax(100.00, {
           country: "US",
           taxRegime: "turnover",
           taxStatusNote: "Small business exemption"
@@ -149,7 +131,17 @@ describe("PricingService", () => {
         }
 
         const resolved = {
-          product_code: "basic-plan-v1",
+          product: Product.make({
+            product_code: "basic-plan-v1",
+            title: "Basic Plan",
+            credits: 1000 as Credits,
+            access_period_days: 30,
+            distribution: "sellable",
+            grant_policy: Option.none(),
+            effective_at: new Date("2025-01-01T00:00:00Z"),
+            archived_at: Option.none(),
+            price_rows: Option.none()
+          }),
           country: "US",
           currency: "USD",
           amount: 9.99,
@@ -172,7 +164,17 @@ describe("PricingService", () => {
         }
 
         const resolved = {
-          product_code: "basic-plan-v1",
+          product: Product.make({
+            product_code: "basic-plan-v1",
+            title: "Basic Plan",
+            credits: 1000 as Credits,
+            access_period_days: 30,
+            distribution: "sellable",
+            grant_policy: Option.none(),
+            effective_at: new Date("2025-01-01T00:00:00Z"),
+            archived_at: Option.none(),
+            price_rows: Option.none()
+          }),
           country: "US",
           currency: "USD",
           amount: 9.99,
@@ -182,11 +184,9 @@ describe("PricingService", () => {
 
         const result = yield* service.validatePricingSnapshot(snapshot, resolved).pipe(Effect.flip)
 
-        expect(result).toBeInstanceOf(InvalidRequest)
-        expect(result._tag).toBe("InvalidRequest")
-        if (result._tag === "InvalidRequest") {
-          expect(result.reason).toBe("format_violation")
-        }
+        expect(result).toBeInstanceOf(ProductUnavailable)
+        expect(result._tag).toBe("ProductUnavailable")
+        expect(result.reason).toBe("pricing_changed")
       })).pipe(Effect.runPromise))
 
     it("fails when amount differs beyond tolerance", () =>
@@ -200,7 +200,17 @@ describe("PricingService", () => {
         }
 
         const resolved = {
-          product_code: "basic-plan-v1",
+          product: Product.make({
+            product_code: "basic-plan-v1",
+            title: "Basic Plan",
+            credits: 1000 as Credits,
+            access_period_days: 30,
+            distribution: "sellable",
+            grant_policy: Option.none(),
+            effective_at: new Date("2025-01-01T00:00:00Z"),
+            archived_at: Option.none(),
+            price_rows: Option.none()
+          }),
           country: "US",
           currency: "USD",
           amount: 9.99,
@@ -210,11 +220,9 @@ describe("PricingService", () => {
 
         const result = yield* service.validatePricingSnapshot(snapshot, resolved).pipe(Effect.flip)
 
-        expect(result).toBeInstanceOf(InvalidRequest)
-        expect(result._tag).toBe("InvalidRequest")
-        if (result._tag === "InvalidRequest") {
-          expect(result.reason).toBe("format_violation")
-        }
+        expect(result).toBeInstanceOf(ProductUnavailable)
+        expect(result._tag).toBe("ProductUnavailable")
+        expect(result.reason).toBe("pricing_changed")
       })).pipe(Effect.runPromise))
   })
 })

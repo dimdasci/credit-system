@@ -1,11 +1,12 @@
 import { MerchantContext } from "@credit-system/shared"
+import { PricingService } from "@server/services/business/PricingService.js"
 import { PurchaseSettlementService } from "@server/services/business/PurchaseSettlementService.js"
 import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
+import { MerchantConfigService } from "@server/services/external/MerchantConfigService.js"
 import { LedgerRepository } from "@server/services/repositories/LedgerRepository.js"
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
 import { ReceiptRepository } from "@server/services/repositories/ReceiptRepository.js"
-import { Effect, Layer } from "effect"
-import { TestMerchantConfigServiceLive } from "../../../fixtures/merchant-config.js"
+import { ConfigProvider, Effect, Layer } from "effect"
 import { TestSettlementData } from "../../../fixtures/settlement-test-data.js"
 
 export interface MockQueryContext {
@@ -366,7 +367,7 @@ const createMockSql = () => {
   return sqlFunction as any
 }
 
-export const withTestLayer = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+export const withTestLayer = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, never> => {
   // Create completely fresh, non-memoized layers for each test execution
   // using Layer.fresh() to force new instances and avoid sharing
   const mockDatabaseManagerLayer = Layer.fresh(
@@ -375,16 +376,16 @@ export const withTestLayer = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
     })
   )
 
+  const merchantId = "test-merchant-id"
   const mockMerchantContextLayer = Layer.fresh(
     Layer.succeed(MerchantContext, {
-      merchantId: "test-merchant-id"
+      merchantId
     })
   )
 
   const baseLayer = Layer.mergeAll(
     mockMerchantContextLayer,
-    mockDatabaseManagerLayer,
-    TestMerchantConfigServiceLive
+    mockDatabaseManagerLayer
   )
 
   const testLayer = Layer.mergeAll(
@@ -392,8 +393,28 @@ export const withTestLayer = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
     Layer.provide(LedgerRepository.Default, Layer.fresh(baseLayer)),
     Layer.provide(ProductRepository.Default, Layer.fresh(baseLayer)),
     Layer.provide(ReceiptRepository.Default, Layer.fresh(baseLayer)),
+    Layer.provide(MerchantConfigService.Default, Layer.fresh(baseLayer)),
+    Layer.provide(PricingService.Default, Layer.fresh(baseLayer)),
     Layer.provide(PurchaseSettlementService.Default, Layer.fresh(baseLayer))
   )
 
-  return effect.pipe(Effect.provide(testLayer))
+  const merchantIdPrefix = merchantId.substring(0, 4).toUpperCase()
+  const configMap = new Map([
+    ["MERCHANT_" + merchantIdPrefix + "_LEGAL_NAME", "Test Credit System LLC"],
+    ["MERCHANT_" + merchantIdPrefix + "_TAX_REGIME", "vat"],
+    ["MERCHANT_" + merchantIdPrefix + "_VAT_RATE", "0.2"],
+    ["MERCHANT_" + merchantIdPrefix + "_RECEIPT_PREFIX", "R-AM"],
+    ["MERCHANT_" + merchantIdPrefix + "_REGISTERED_ADDRESS", "123 Test Street, Test City, TC 12345"],
+    ["MERCHANT_" + merchantIdPrefix + "_COUNTRY", "US"],
+    ["MERCHANT_" + merchantIdPrefix + "_TAX_STATUS_NOTE", "VAT registered for testing"],
+    ["MERCHANT_" + merchantIdPrefix + "_OPERATION_TIMEOUT_MINUTES", "30"],
+    ["MERCHANT_" + merchantIdPrefix + "_RETENTION_YEARS", "7"]
+  ])
+
+  const testConfigProvider = ConfigProvider.fromMap(configMap)
+
+  return effect.pipe(
+    Effect.provide(testLayer),
+    Effect.withConfigProvider(testConfigProvider)
+  ) as Effect.Effect<A, E, never>
 }

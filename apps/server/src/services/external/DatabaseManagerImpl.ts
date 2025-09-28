@@ -1,11 +1,12 @@
 import { SqlClient } from "@effect/sql"
 import type { SqlError } from "@effect/sql"
 import { PgClient } from "@effect/sql-pg"
+import { ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
 import { Config, Context, Effect, Layer, Option } from "effect"
 import type { ConfigError } from "effect/ConfigError"
 import type { Redacted } from "effect/Redacted"
 import { types as pgTypes } from "pg"
-import { DatabaseManager, MissingMerchantDatabaseUrlError } from "./DatabaseManager.js"
+import { DatabaseManager } from "./DatabaseManager.js"
 
 // Configure pg (node-postgres) type parsers so encoded values match our schemas
 // - 1184 timestamptz: keep ISO string as-is
@@ -37,7 +38,7 @@ export const DatabaseManagerLive = Layer.effect(
     return DatabaseManager.of({
       getConnection: (
         merchantId: string
-      ): Effect.Effect<SqlClient.SqlClient, MissingMerchantDatabaseUrlError | ConfigError | SqlError.SqlError> =>
+      ): Effect.Effect<SqlClient.SqlClient, ServiceUnavailable | ConfigError | SqlError.SqlError> =>
         Effect.gen(function*() {
           const prefix = merchantId.substring(0, 4).toUpperCase()
 
@@ -51,7 +52,14 @@ export const DatabaseManagerLive = Layer.effect(
 
           const dbUrl = yield* Config.option(dbUrlConfig).pipe(
             Effect.flatMap(Option.match({
-              onNone: () => Effect.fail(new MissingMerchantDatabaseUrlError({ merchantId, envVar })),
+              onNone: () =>
+                Effect.fail(
+                  new ServiceUnavailable({
+                    service: "DatabaseManager",
+                    reason: "corrupted_configuration",
+                    details: `Missing database URL configuration: ${envVar} for merchant ${merchantId}`
+                  })
+                ),
               onSome: (url) => Effect.succeed(url)
             }))
           )

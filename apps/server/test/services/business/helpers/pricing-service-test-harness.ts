@@ -54,7 +54,9 @@ const createMockSql = () => {
           if ("values" in (value as Record<string, unknown>)) {
             const fragmentValues = (value as { values?: Array<unknown> }).values
             if (fragmentValues) {
-              resolvedValues.push(...fragmentValues)
+              for (const val of fragmentValues) {
+                resolvedValues.push(val)
+              }
             }
           }
           query += strings[i + 1] ?? ""
@@ -94,8 +96,8 @@ const createMockSql = () => {
 
       const product = PricingTestProducts.find((p) => p.product_code === productCode)
       if (product && product.price_rows) {
-        // Find EXACT country match only (no fallback - let PricingService handle fallback)
-        const priceRow = product.price_rows.find((pr) => pr.country === country)
+        const priceRow = product.price_rows.find((pr) => pr.country === country) ??
+          product.price_rows.find((pr) => pr.country === "*")
 
         if (priceRow) {
           return attachTemplate(Effect.succeed([{

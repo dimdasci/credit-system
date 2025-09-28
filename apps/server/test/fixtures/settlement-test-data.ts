@@ -1,6 +1,7 @@
 import type { Product } from "@server/domain/products/Product.js"
 import type { Receipt } from "@server/domain/receipts/Receipt.js"
-import type { PricingSnapshot, SettlementRequest } from "@server/services/business/PurchaseSettlementService.js"
+import type { PricingSnapshot } from "@server/services/business/PricingService.js"
+import type { SettlementRequest } from "@server/services/business/PurchaseSettlementService.js"
 
 export const TestUsers = {
   USER_1: "user-1-new-purchase",

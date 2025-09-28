@@ -24,21 +24,6 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
           })
       })
 
-      const _getProductByCode = SqlSchema.single({
-        Request: Schema.String,
-        Result: Product,
-        execute: (code) =>
-          Effect.gen(function*() {
-            const sql = yield* db.getConnection(merchantContext.merchantId)
-            return yield* sql`
-              SELECT * FROM products 
-              WHERE product_code = ${code}
-              AND effective_at <= NOW()
-              AND (archived_at IS NULL OR archived_at > NOW())
-              LIMIT 1
-            `
-          })
-      })
 
       const _getActiveProducts = SqlSchema.findAll({
         Request: Schema.Void,
@@ -74,10 +59,6 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
       return {
         createProduct: (product: Product) => _createProduct(product),
 
-        getProductByCode: (code: string) =>
-          _getProductByCode(code).pipe(
-            Effect.catchTag("NoSuchElementException", () => Effect.succeed(null))
-          ),
 
         getActiveProducts: () => _getActiveProducts(),
         getSellableProducts: () => _getSellableProducts(),

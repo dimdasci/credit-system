@@ -1,7 +1,16 @@
 import { PurchaseRpcs } from "@credit-system/rpc"
+import type * as SqlError from "@effect/sql/SqlError"
 import { Authorization } from "@server/application/rpc/middleware/AuthorizationMiddleware.js"
+import {
+  DuplicateAdminAction,
+  InvalidRequest,
+  ProductUnavailable,
+  ServiceUnavailable
+} from "@server/domain/shared/DomainErrors.js"
 import { PurchaseSettlementService } from "@server/services/business/PurchaseSettlementService.js"
 import { Effect } from "effect"
+import type { ConfigError } from "effect/ConfigError"
+import type { ParseError } from "effect/ParseResult"
 
 // Apply authorization middleware to all purchase RPCs
 export const ProtectedPurchaseRpcs = PurchaseRpcs.middleware(Authorization)
@@ -57,61 +66,62 @@ export const PurchaseHandlers = ProtectedPurchaseRpcs.toLayer({
         }
       }
     }).pipe(
-      // Map domain errors to RPC errors
-      Effect.mapError((error) => {
-        if (error._tag === "ProductUnavailable") {
-          return {
-            _tag: "ProductUnavailable" as const,
-            productCode: error.product_code,
-            reason: error.reason === "not_available_in_country" ?
-              "country_unavailable" as const :
-              error.reason === "pricing_changed" ?
-              "pricing_mismatch" as const :
-              error.reason as any
+      Effect.mapError(
+        (
+          error:
+            | ProductUnavailable
+            | DuplicateAdminAction
+            | ServiceUnavailable
+            | InvalidRequest
+            | ConfigError
+            | SqlError.SqlError
+            | ParseError
+        ) => {
+          if (error instanceof ProductUnavailable) {
+            return {
+              _tag: "ProductUnavailable" as const,
+              productCode: error.product_code,
+              reason: error.reason === "not_available_in_country" ?
+                "country_unavailable" as const :
+                error.reason === "pricing_changed" ?
+                "pricing_mismatch" as const :
+                error.reason as any
+            }
           }
-        }
 
-        const duplicateAdminAction = error as any
-
-        if (
-          duplicateAdminAction &&
-          typeof duplicateAdminAction === "object" &&
-          duplicateAdminAction._tag === "DuplicateAdminAction"
-        ) {
-          return {
-            _tag: "DuplicateSettlement" as const,
-            externalRef: duplicateAdminAction.external_ref ?? request.settlementData.externalRef,
-            existingLotId: "existing_lot_id" in duplicateAdminAction &&
-                typeof duplicateAdminAction.existing_lot_id === "string" ?
-              duplicateAdminAction.existing_lot_id :
-              "",
-            existingReceiptId: "existing_receipt_id" in duplicateAdminAction &&
-                typeof duplicateAdminAction.existing_receipt_id === "string" ?
-              duplicateAdminAction.existing_receipt_id :
-              ""
+          if (error instanceof DuplicateAdminAction) {
+            return {
+              _tag: "DuplicateSettlement" as const,
+              externalRef: error.external_ref ?? request.settlementData.externalRef,
+              existingLotId: typeof (error as any).existing_lot_id === "string" ?
+                (error as any).existing_lot_id :
+                "",
+              existingReceiptId: typeof (error as any).existing_receipt_id === "string" ?
+                (error as any).existing_receipt_id :
+                ""
+            }
           }
-        }
 
-        if (error._tag === "ServiceUnavailable") {
+          if (error instanceof ServiceUnavailable) {
+            return {
+              _tag: "ServiceUnavailable" as const,
+              retryAfter: "30s"
+            }
+          }
+
+          if (error instanceof InvalidRequest) {
+            return {
+              _tag: "InvalidRequest" as const,
+              field: error.field ?? "unknown",
+              message: error.reason ?? "Invalid request"
+            }
+          }
+
           return {
             _tag: "ServiceUnavailable" as const,
             retryAfter: "30s"
           }
         }
-
-        if (error._tag === "InvalidRequest") {
-          return {
-            _tag: "InvalidRequest" as const,
-            field: error.field || "unknown",
-            message: error.reason || "Invalid request"
-          }
-        }
-
-        // Generic fallback for any unexpected errors
-        return {
-          _tag: "ServiceUnavailable" as const,
-          retryAfter: "30s"
-        }
-      })
+      )
     )
 })
