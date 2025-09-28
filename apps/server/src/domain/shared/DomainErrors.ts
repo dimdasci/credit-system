@@ -194,28 +194,31 @@ export class ServiceUnavailable extends Schema.TaggedError<ServiceUnavailable>("
       "concurrent_update_conflict",
       "external_service_down",
       "resource_exhaustion",
-      "data_corruption"
+      "data_corruption",
+      "corrupted_configuration"
     ),
+    details: Schema.optional(Schema.String),
     retry_after_seconds: Schema.optional(Schema.Number)
   }
 ) {
   toString(): string {
     const servicePrefix = this.service ? `${this.service}: ` : ""
     const retryInfo = this.retry_after_seconds ? ` Retry after ${this.retry_after_seconds} seconds.` : ""
+    const detailsInfo = this.details ? `\nDetails: ${this.details}` : ""
 
     switch (this.reason) {
       case "database_connection_failure":
-        return `${servicePrefix}Database connection failed.${retryInfo}`
+        return `${servicePrefix}Database connection failed.${retryInfo}${detailsInfo}`
       case "transaction_timeout":
-        return `${servicePrefix}Transaction timed out due to high load.${retryInfo}`
+        return `${servicePrefix}Transaction timed out due to high load.${retryInfo}${detailsInfo}`
       case "concurrent_update_conflict":
-        return `${servicePrefix}Concurrent update conflict detected.${retryInfo}`
+        return `${servicePrefix}Concurrent update conflict detected.${retryInfo}${detailsInfo}`
       case "external_service_down":
-        return `${servicePrefix}External service dependency is unavailable.${retryInfo}`
+        return `${servicePrefix}External service dependency is unavailable.${retryInfo}${detailsInfo}`
       case "resource_exhaustion":
-        return `${servicePrefix}System resources temporarily exhausted.${retryInfo}`
+        return `${servicePrefix}System resources temporarily exhausted.${retryInfo}${detailsInfo}`
       default:
-        return `${servicePrefix}Service temporarily unavailable.${retryInfo}`
+        return `${servicePrefix}Service temporarily unavailable.${retryInfo}${detailsInfo}`
     }
   }
 }
@@ -229,3 +232,13 @@ export type DomainError =
   | InvalidRequest
   | AuthorizationRequired
   | ServiceUnavailable
+
+export const DomainErrorTypeId: unique symbol = Symbol.for("credit-system/DomainError")
+export type DomainErrorTypeId = typeof DomainErrorTypeId
+
+export declare namespace DomainError {
+  export interface Proto {
+    readonly _tag: "DomainError"
+    readonly [DomainErrorTypeId]: DomainErrorTypeId
+  }
+}

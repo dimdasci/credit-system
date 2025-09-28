@@ -4,6 +4,16 @@ import type { Product } from "@server/domain/products/Product.js"
 import { Receipt } from "@server/domain/receipts/Receipt.js"
 import type { DuplicateAdminAction } from "@server/domain/shared/DomainErrors.js"
 import { InvalidRequest, ProductUnavailable, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
+import {
+  CountryNotSupported,
+  InvalidPricingRequest,
+  type PricingError,
+  PricingMismatch,
+  PricingService,
+  type PricingSnapshot as PricingServiceSnapshot,
+  ProductNotAvailable,
+  ProductNotFound
+} from "@server/services/business/PricingService.js"
 import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
 import { MerchantConfigService } from "@server/services/external/MerchantConfigService.js"
 import { LedgerRepository } from "@server/services/repositories/LedgerRepository.js"
@@ -11,6 +21,8 @@ import { ProductRepository } from "@server/services/repositories/ProductReposito
 import { ReceiptRepository } from "@server/services/repositories/ReceiptRepository.js"
 import { Effect, Option, Schema } from "effect"
 import { randomUUID } from "node:crypto"
+
+export type PricingSnapshot = PricingServiceSnapshot
 
 // Request/Response Interfaces
 export interface SettlementRequest {
@@ -20,20 +32,6 @@ export interface SettlementRequest {
   order_placed_at: Date
   external_ref: string
   settled_at: Date
-}
-
-export interface PricingSnapshot {
-  country: string // ISO-3166-1 alpha-2
-  currency: string // ISO-4217
-  amount: number // tax-inclusive
-  tax_breakdown?: TaxBreakdown
-}
-
-export interface TaxBreakdown {
-  type: "vat" | "turnover" | "none"
-  rate?: number
-  amount?: number
-  note?: string
 }
 
 export interface SettlementResult {
@@ -84,39 +82,72 @@ const loadActiveProduct = (request: SettlementRequest) =>
     return product
   })
 
+const mapPricingErrorToSettlementError = (
+  request: SettlementRequest,
+  error: PricingError
+): ProductUnavailable | InvalidRequest | ServiceUnavailable => {
+  if (error instanceof ProductNotFound) {
+    return new ProductUnavailable({
+      product_code: request.product_code,
+      country: request.pricing_snapshot.country,
+      reason: "not_found"
+    })
+  }
+
+  if (error instanceof ProductNotAvailable) {
+    const reason = error.reason === "archived" ? "archived" : "not_found"
+    return new ProductUnavailable({
+      product_code: request.product_code,
+      country: request.pricing_snapshot.country,
+      reason
+    })
+  }
+
+  if (error instanceof CountryNotSupported) {
+    return new ProductUnavailable({
+      product_code: error.product_code,
+      country: error.country,
+      reason: "not_available_in_country"
+    })
+  }
+
+  if (error instanceof InvalidPricingRequest) {
+    if (error.reason === "merchant_configuration_unavailable") {
+      return new ServiceUnavailable({
+        service: "PricingService",
+        reason: "external_service_down",
+        retry_after_seconds: 30
+      })
+    }
+    return new InvalidRequest({
+      reason: "invalid_parameters",
+      details: error.reason
+    })
+  }
+
+  if (error instanceof PricingMismatch) {
+    return new ProductUnavailable({
+      product_code: request.product_code,
+      country: request.pricing_snapshot.country,
+      reason: "pricing_changed"
+    })
+  }
+
+  return new InvalidRequest({ reason: "invalid_parameters" })
+}
+
 const validatePricingSnapshot = (request: SettlementRequest) =>
   Effect.gen(function*() {
-    const productRepo = yield* ProductRepository
-    const resolvedPrice = yield* productRepo.getResolvedPrice(
+    const pricingService = yield* PricingService
+    const resolved = yield* pricingService.resolvePrice(
       request.product_code,
-      request.pricing_snapshot.country
+      request.pricing_snapshot.country,
+      request.order_placed_at
     )
-
-    if (!resolvedPrice) {
-      return yield* Effect.fail(
-        new ProductUnavailable({
-          product_code: request.product_code,
-          country: request.pricing_snapshot.country,
-          reason: "not_available_in_country"
-        })
-      )
-    }
-
-    if (
-      resolvedPrice.amount !== request.pricing_snapshot.amount ||
-      resolvedPrice.currency !== request.pricing_snapshot.currency
-    ) {
-      return yield* Effect.fail(
-        new ProductUnavailable({
-          product_code: request.product_code,
-          country: request.pricing_snapshot.country,
-          reason: "pricing_changed"
-        })
-      )
-    }
-
-    return undefined
-  })
+    yield* pricingService.validatePricingSnapshot(request.pricing_snapshot, resolved)
+  }).pipe(
+    Effect.catchAll((error) => Effect.fail(mapPricingErrorToSettlementError(request, error)))
+  )
 
 const dataCorruptionError = () =>
   new ServiceUnavailable({
@@ -346,7 +377,8 @@ export class PurchaseSettlementService extends Effect.Service<PurchaseSettlement
       LedgerRepository.Default,
       ProductRepository.Default,
       ReceiptRepository.Default,
-      MerchantConfigService.Default
+      MerchantConfigService.Default,
+      PricingService.Default
     ]
   }
 ) {}
