@@ -1,142 +1,13 @@
-import type * as SqlError from "@effect/sql/SqlError"
 import type { MerchantConfig } from "@server/domain/merchants/MerchantConfig.js"
-import { ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
-import type { MissingMerchantDatabaseUrlError } from "@server/services/external/DatabaseManager.js"
-import type {
-  InvalidMerchantConfigError,
-  MissingMerchantConfigError
-} from "@server/services/external/MerchantConfigService.js"
+import type { Product } from "@server/domain/products/Product.js"
+import { ProductUnavailable, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
+import { ProductService } from "@server/services/business/ProductService.js"
 import { MerchantConfigService } from "@server/services/external/MerchantConfigService.js"
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
-import { Effect, Option, Schema } from "effect"
-import type { ConfigError } from "effect/ConfigError"
-import type { ParseError } from "effect/ParseResult"
-
-export class CountryNotSupported extends Schema.TaggedError<CountryNotSupported>("CountryNotSupported")(
-  "CountryNotSupported",
-  {
-    product_code: Schema.String,
-    country: Schema.String
-  }
-) {}
-
-export class InvalidPricingRequest extends Schema.TaggedError<InvalidPricingRequest>("InvalidPricingRequest")(
-  "InvalidPricingRequest",
-  {
-    product_code: Schema.String,
-    reason: Schema.String
-  }
-) {}
-
-export class PricingMismatch extends Schema.TaggedError<PricingMismatch>("PricingMismatch")(
-  "PricingMismatch",
-  {
-    field: Schema.String,
-    expected: Schema.Unknown,
-    provided: Schema.Unknown
-  }
-) {}
-
-export class ProductNotFound extends Schema.TaggedError<ProductNotFound>("ProductNotFound")(
-  "ProductNotFound",
-  {
-    product_code: Schema.String
-  }
-) {}
-
-export class ProductNotAvailable extends Schema.TaggedError<ProductNotAvailable>("ProductNotAvailable")(
-  "ProductNotAvailable",
-  {
-    product_code: Schema.String,
-    at_time: Schema.Date,
-    reason: Schema.Literal("archived", "not_active")
-  }
-) {}
-
-export type PricingError =
-  | CountryNotSupported
-  | InvalidPricingRequest
-  | PricingMismatch
-  | ProductNotFound
-  | ProductNotAvailable
-
-export const PricingErrorTypeId: unique symbol = Symbol.for("credit-system/PricingError")
-export type PricingErrorTypeId = typeof PricingErrorTypeId
-
-export declare namespace PricingError {
-  export interface Proto {
-    readonly _tag: "PricingError"
-    readonly [PricingErrorTypeId]: PricingErrorTypeId
-  }
-}
-
-const mapToServiceUnavailable = <A>(
-  effect: Effect.Effect<
-    A,
-    | ConfigError
-    | MissingMerchantConfigError
-    | InvalidMerchantConfigError
-    | MissingMerchantDatabaseUrlError
-    | SqlError.SqlError
-    | ParseError
-  >,
-  productCode: string
-) =>
-  effect.pipe(
-    Effect.catchTags({
-      ConfigError: (error) =>
-        Effect.fail(
-          new ServiceUnavailable({
-            service: "PricingService",
-            reason: "corrupted_configuration",
-            details: `Error in configuration: ${error.message}`
-          })
-        ),
-      MissingMerchantConfigError: (error) =>
-        Effect.fail(
-          new ServiceUnavailable({
-            service: "PricingService",
-            reason: "corrupted_configuration",
-            details: `Merchant configuration unavailable: ${error.toString()}`
-          })
-        ),
-      InvalidMerchantConfigError: (error) =>
-        Effect.fail(
-          new ServiceUnavailable({
-            service: "PricingService",
-            reason: "corrupted_configuration",
-            details: `Invalid merchant configuration: ${error.toString()}`
-          })
-        ),
-      MissingMerchantDatabaseUrlError: (error) =>
-        Effect.fail(
-          new ServiceUnavailable({
-            service: "PricingService",
-            reason: "corrupted_configuration",
-            details: `Missing merchant database URL: ${error.message}`
-          })
-        ),
-      SqlError: (error) =>
-        Effect.fail(
-          new ServiceUnavailable({
-            service: "PricingService",
-            reason: "database_connection_failure",
-            details: `Database error while accessing product ${productCode}: ${error.message}`
-          })
-        ),
-      ParseError: (error) =>
-        Effect.fail(
-          new ServiceUnavailable({
-            service: "PricingService",
-            reason: "data_corruption",
-            details: `Failed to parse data from repository for product ${productCode}: ${error.message}`
-          })
-        )
-    })
-  )
+import { Effect } from "effect"
 
 export interface ResolvedPricing {
-  product_code: string
+  product: Product
   country: string
   currency: string
   amount: number // tax-inclusive
@@ -170,6 +41,7 @@ export interface TaxBreakdown {
 export class PricingService extends Effect.Service<PricingService>()("PricingService", {
   effect: Effect.gen(function*() {
     const productRepo = yield* ProductRepository
+    const productService = yield* ProductService
     const merchantConfigService = yield* MerchantConfigService
 
     const resolvePrice = (
@@ -178,59 +50,41 @@ export class PricingService extends Effect.Service<PricingService>()("PricingSer
       at_time: Date
     ) =>
       Effect.gen(function*() {
-        // 1. Get product and validate availability
-        const product = yield* mapToServiceUnavailable(productRepo.getProductByCode(product_code), product_code)
-
-        if (!product) {
-          return yield* Effect.fail(new ProductNotFound({ product_code }))
-        }
-
-        // Check product is active at the specified time
-        if (product.effective_at > at_time) {
-          return yield* Effect.fail(
-            new ProductNotAvailable({
-              product_code,
-              at_time,
-              reason: "not_active"
-            })
-          )
-        }
-
-        if (Option.isSome(product.archived_at) && product.archived_at.value <= at_time) {
-          return yield* Effect.fail(
-            new ProductNotAvailable({
-              product_code,
-              at_time,
-              reason: "archived"
-            })
-          )
-        }
-
-        // 2. Grant products have no pricing
-        if (product.distribution === "grant") {
-          return yield* Effect.fail(
-            new InvalidPricingRequest({
-              product_code,
-              reason: "grant_products_do_not_have_pricing"
-            })
-          )
-        }
-
-        // 3. Resolve price row with country-specific then fallback
-        const priceRow = yield* mapToServiceUnavailable(
-          productRepo.getResolvedPrice(product_code, country),
-          product_code
+        // 1. Validate product is available for pricing
+        const product = yield* productService.validateProductForPricing(
+          product_code,
+          at_time
         )
+
+        // 2. Resolve price row with country-specific then fallback
+        const priceRow = yield* productRepo.getResolvedPrice(product_code, country)
+          .pipe(Effect.mapError(() =>
+            new ServiceUnavailable({
+              service: "PricingService",
+              reason: "database_connection_failure",
+              details: `Failed to resolve pricing for product: ${product_code}`
+            })
+          ))
 
         if (!priceRow) {
-          return yield* Effect.fail(new CountryNotSupported({ product_code, country }))
+          return yield* Effect.fail(
+            new ProductUnavailable({
+              product_code: product.product_code,
+              country,
+              reason: "not_available_in_country"
+            })
+          )
         }
 
-        // 4. Calculate tax breakdown
-        const merchantConfig = yield* mapToServiceUnavailable(
-          merchantConfigService.getCurrentMerchantConfig(),
-          product_code
-        )
+        // 3. Calculate tax breakdown
+        const merchantConfig = yield* merchantConfigService.getCurrentMerchantConfig()
+          .pipe(Effect.mapError(() =>
+            new ServiceUnavailable({
+              service: "PricingService",
+              reason: "corrupted_configuration",
+              details: `Failed to load merchant configuration for pricing: ${product_code}`
+            })
+          ))
 
         const taxCalculation = yield* calculateTax(
           priceRow.amount,
@@ -242,7 +96,7 @@ export class PricingService extends Effect.Service<PricingService>()("PricingSer
           : "fallback"
 
         return {
-          product_code,
+          product,
           country,
           currency: priceRow.currency,
           amount: priceRow.amount,
@@ -254,7 +108,7 @@ export class PricingService extends Effect.Service<PricingService>()("PricingSer
     const calculateTax = (
       amount: number,
       merchantConfig: MerchantConfig
-    ): Effect.Effect<TaxCalculation, PricingError> =>
+    ): Effect.Effect<TaxCalculation, never> =>
       Effect.sync(() => {
         switch (merchantConfig.taxRegime) {
           case "vat":
@@ -295,15 +149,15 @@ export class PricingService extends Effect.Service<PricingService>()("PricingSer
     const validatePricingSnapshot = (
       snapshot: PricingSnapshot,
       resolved: ResolvedPricing
-    ): Effect.Effect<void, PricingError> =>
+    ): Effect.Effect<void, ProductUnavailable> =>
       Effect.gen(function*() {
         // Validate currency matches
         if (snapshot.currency !== resolved.currency) {
           return yield* Effect.fail(
-            new PricingMismatch({
-              field: "currency",
-              expected: resolved.currency,
-              provided: snapshot.currency
+            new ProductUnavailable({
+              product_code: resolved.product.product_code,
+              country: snapshot.country,
+              reason: "pricing_changed"
             })
           )
         }
@@ -312,10 +166,10 @@ export class PricingService extends Effect.Service<PricingService>()("PricingSer
         const tolerance = 0.01
         if (Math.abs(snapshot.amount - resolved.amount) > tolerance) {
           return yield* Effect.fail(
-            new PricingMismatch({
-              field: "amount",
-              expected: resolved.amount,
-              provided: snapshot.amount
+            new ProductUnavailable({
+              product_code: resolved.product.product_code,
+              country: snapshot.country,
+              reason: "pricing_changed"
             })
           )
         }
@@ -324,10 +178,10 @@ export class PricingService extends Effect.Service<PricingService>()("PricingSer
         if (snapshot.tax_breakdown && resolved.tax_calculation.type !== "none") {
           if (snapshot.tax_breakdown.type !== resolved.tax_calculation.type) {
             return yield* Effect.fail(
-              new PricingMismatch({
-                field: "tax_type",
-                expected: resolved.tax_calculation.type,
-                provided: snapshot.tax_breakdown.type
+              new ProductUnavailable({
+                product_code: resolved.product.product_code,
+                country: snapshot.country,
+                reason: "pricing_changed"
               })
             )
           }
@@ -336,10 +190,10 @@ export class PricingService extends Effect.Service<PricingService>()("PricingSer
             const rateTolerance = 0.0001 // 0.01% tolerance
             if (Math.abs(snapshot.tax_breakdown.rate - resolved.tax_calculation.rate) > rateTolerance) {
               return yield* Effect.fail(
-                new PricingMismatch({
-                  field: "tax_rate",
-                  expected: resolved.tax_calculation.rate,
-                  provided: snapshot.tax_breakdown.rate
+                new ProductUnavailable({
+                  product_code: resolved.product.product_code,
+                  country: snapshot.country,
+                  reason: "pricing_changed"
                 })
               )
             }
@@ -351,6 +205,7 @@ export class PricingService extends Effect.Service<PricingService>()("PricingSer
   }),
   dependencies: [
     ProductRepository.Default,
+    ProductService.Default,
     MerchantConfigService.Default
   ]
 }) {}
