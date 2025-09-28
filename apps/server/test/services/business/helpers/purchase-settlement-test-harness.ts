@@ -8,6 +8,7 @@ import { ProductRepository } from "@server/services/repositories/ProductReposito
 import { ReceiptRepository } from "@server/services/repositories/ReceiptRepository.js"
 import { ConfigProvider, Effect, Layer } from "effect"
 import { TestSettlementData } from "../../../fixtures/settlement-test-data.js"
+import { SharedQueryMocks } from "./shared-query-mocks.js"
 
 export interface MockQueryContext {
   lastInsertValues: Array<unknown> | null
@@ -39,7 +40,11 @@ export const mockQueryContext: MockQueryContext = initialContext()
 
 export const resetMockQueryContext = () => {
   Object.assign(mockQueryContext, initialContext())
+  SharedQueryMocks.resetDistributionFilter()
 }
+
+// Create shared query simulations
+const productQueryMocks = SharedQueryMocks.createProductQuerySimulations(TestSettlementData.products)
 
 const mockSqlClient = {
   [Symbol.for("sql-template")]: true,
@@ -108,72 +113,22 @@ const mockSqlClient = {
       return attachTemplate(effect)
     }
 
-    // ProductRepository.getProductByCode simulation
-    if (query.includes("SELECT * FROM products") && query.includes("WHERE product_code = ?")) {
-      const productCode = resolvedValues[0] as string
-      const product = TestSettlementData.products.find((p) => p.product_code === productCode)
+    // Try shared product query simulations
+    const getProductsByEffectiveDateResult = productQueryMocks.simulateGetProductsByEffectiveDate(
+      query,
+      resolvedValues,
+      attachTemplate
+    )
+    if (getProductsByEffectiveDateResult) return getProductsByEffectiveDateResult
 
-      if (product) {
-        const effect = Effect.succeed([product])
-        return attachTemplate(effect)
-      } else {
-        // SqlSchema.single throws NoSuchElementException when no results found
-        const effect = Effect.fail({ _tag: "NoSuchElementException" })
-        return attachTemplate(effect)
-      }
-    }
+    const getProductByCodeResult = productQueryMocks.simulateGetProductByCode(query, resolvedValues, attachTemplate)
+    if (getProductByCodeResult) return getProductByCodeResult
 
-    // ProductRepository.isProductActive simulation
-    if (
-      query.includes("SELECT") && query.includes("CASE WHEN COUNT(*) > 0 THEN true ELSE false END as active") &&
-      query.includes("FROM products") && query.includes("WHERE product_code = ?")
-    ) {
-      const productCode = resolvedValues[0] as string
-      const atDate = resolvedValues[1] as Date || new Date()
-      const product = TestSettlementData.products.find((p) => p.product_code === productCode)
+    const isProductActiveResult = productQueryMocks.simulateIsProductActive(query, resolvedValues, attachTemplate)
+    if (isProductActiveResult) return isProductActiveResult
 
-      const isActive = product &&
-        new Date(product.effective_at) <= atDate &&
-        (!product.archived_at || new Date(product.archived_at) > atDate)
-
-      const effect = Effect.succeed([{ active: isActive || false }])
-      return attachTemplate(effect)
-    }
-
-    // ProductRepository.getResolvedPrice simulation
-    if (
-      query.includes("SELECT") && query.includes("pr.country") && query.includes("pr.currency") &&
-      query.includes("FROM products p") && query.includes("LEFT JOIN LATERAL")
-    ) {
-      const country = resolvedValues[0] as string
-      const productCode = resolvedValues[2] as string
-
-      const product = TestSettlementData.products.find((p) => p.product_code === productCode)
-      if (product && product.price_rows) {
-        // Find country-specific price or fallback to '*'
-        let priceRow = product.price_rows.find((pr) => pr.country === country)
-        if (!priceRow) {
-          priceRow = product.price_rows.find((pr) => pr.country === "*")
-        }
-
-        if (priceRow) {
-          const effect = Effect.succeed([{
-            country: priceRow.country,
-            currency: priceRow.currency,
-            amount: priceRow.amount,
-            vat_info: priceRow.vat_info || null
-          }])
-          return attachTemplate(effect)
-        }
-      }
-      const effect = Effect.succeed([{
-        country: null,
-        currency: null,
-        amount: null,
-        vat_info: null
-      }])
-      return attachTemplate(effect)
-    }
+    const getResolvedPriceResult = productQueryMocks.simulateGetResolvedPrice(query, resolvedValues, attachTemplate)
+    if (getResolvedPriceResult) return getResolvedPriceResult
 
     // ReceiptRepository.getReceiptByLot simulation (for idempotency check)
     if (query.includes("SELECT * FROM receipts") && query.includes("WHERE lot_id = ?")) {
@@ -376,7 +331,7 @@ export const withTestLayer = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.E
     })
   )
 
-  const merchantId = "test-merchant-id"
+  const merchantId = "9327"
   const mockMerchantContextLayer = Layer.fresh(
     Layer.succeed(MerchantContext, {
       merchantId
@@ -400,12 +355,12 @@ export const withTestLayer = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.E
 
   const merchantIdPrefix = merchantId.substring(0, 4).toUpperCase()
   const configMap = new Map([
-    ["MERCHANT_" + merchantIdPrefix + "_LEGAL_NAME", "Test Credit System LLC"],
+    ["MERCHANT_" + merchantIdPrefix + "_LEGAL_NAME", "Test GmbH"],
     ["MERCHANT_" + merchantIdPrefix + "_TAX_REGIME", "vat"],
-    ["MERCHANT_" + merchantIdPrefix + "_VAT_RATE", "0.2"],
-    ["MERCHANT_" + merchantIdPrefix + "_RECEIPT_PREFIX", "R-AM"],
-    ["MERCHANT_" + merchantIdPrefix + "_REGISTERED_ADDRESS", "123 Test Street, Test City, TC 12345"],
-    ["MERCHANT_" + merchantIdPrefix + "_COUNTRY", "US"],
+    ["MERCHANT_" + merchantIdPrefix + "_VAT_RATE", "0.19"],
+    ["MERCHANT_" + merchantIdPrefix + "_RECEIPT_PREFIX", "R-DE"],
+    ["MERCHANT_" + merchantIdPrefix + "_REGISTERED_ADDRESS", "Berlin, Germany"],
+    ["MERCHANT_" + merchantIdPrefix + "_COUNTRY", "DE"],
     ["MERCHANT_" + merchantIdPrefix + "_TAX_STATUS_NOTE", "VAT registered for testing"],
     ["MERCHANT_" + merchantIdPrefix + "_OPERATION_TIMEOUT_MINUTES", "30"],
     ["MERCHANT_" + merchantIdPrefix + "_RETENTION_YEARS", "7"]

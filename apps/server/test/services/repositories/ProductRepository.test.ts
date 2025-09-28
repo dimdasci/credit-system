@@ -50,7 +50,6 @@ const mockSqlClient = {
       return Effect.succeed("") // Empty fragment
     }
 
-
     // Handle active products query
     if (
       query.includes("SELECT * FROM products") && query.includes("WHERE effective_at <= NOW()") &&
@@ -188,7 +187,6 @@ beforeEach(() => {
 })
 
 describe("ProductRepository Business Logic", () => {
-
   describe("getActiveProducts", () => {
     it("returns only active products (not archived, effective now)", () =>
       Effect.gen(function*() {

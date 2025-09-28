@@ -5,6 +5,7 @@ import { MerchantConfigService } from "@server/services/external/MerchantConfigS
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
 import { ConfigProvider, Effect, Layer } from "effect"
 import { PricingTestMerchantConfigs, PricingTestProducts } from "../../../fixtures/pricing-test-data.js"
+import { SharedQueryMocks } from "./shared-query-mocks.js"
 
 export interface MockQueryContext {
   lastQuery: string
@@ -20,8 +21,12 @@ const initialContext = (): MockQueryContext => ({
 
 export const mockQueryContext: MockQueryContext = initialContext()
 
+// Create shared query simulations
+const productQueryMocks = SharedQueryMocks.createProductQuerySimulations(PricingTestProducts)
+
 export const resetMockQueryContext = () => {
   Object.assign(mockQueryContext, initialContext())
+  SharedQueryMocks.resetDistributionFilter()
 }
 
 const createMockSql = () => {
@@ -45,7 +50,18 @@ const createMockSql = () => {
     for (let i = 0; i < values.length; i++) {
       const value = values[i]
 
-      // Handle SQL fragments
+      // Handle Effect objects (empty SQL fragments)
+      if (value && typeof value === "object" && "_tag" in (value as Record<string, unknown>)) {
+        const effectValue = value as { _tag: string; value?: unknown }
+        // Skip empty SQL fragments (these are typically conditional fragments that evaluated to empty)
+        if (effectValue._tag === "Success" && Array.isArray(effectValue.value) && effectValue.value.length === 0) {
+          // This is an empty fragment, skip it
+          query += strings[i + 1] ?? ""
+          continue
+        }
+      }
+
+      // Handle SQL fragments with actual content
       if (value && typeof value === "object" && "strings" in (value as Record<string, unknown>)) {
         const fragmentStrings = (value as { strings?: ReadonlyArray<string> }).strings
         if (fragmentStrings && fragmentStrings.length > 0) {
@@ -74,49 +90,22 @@ const createMockSql = () => {
     mockQueryContext.lastQueryValues = resolvedValues
     mockQueryContext.queryCount++
 
-    // ProductRepository.getProductByCode simulation
-    if (query.includes("SELECT * FROM products") && query.includes("WHERE product_code = ?")) {
-      const productCode = resolvedValues[0] as string
-      const product = PricingTestProducts.find((p) => p.product_code === productCode)
+    // Try shared query simulations
+    const fragmentResult = SharedQueryMocks.handleSqlFragments(query, resolvedValues, attachTemplate)
+    if (fragmentResult) return fragmentResult
 
-      if (product) {
-        return attachTemplate(Effect.succeed([product]))
-      } else {
-        return attachTemplate(Effect.fail({ _tag: "NoSuchElementException" }))
-      }
-    }
+    const getProductsByEffectiveDateResult = productQueryMocks.simulateGetProductsByEffectiveDate(
+      query,
+      resolvedValues,
+      attachTemplate
+    )
+    if (getProductsByEffectiveDateResult) return getProductsByEffectiveDateResult
 
-    // ProductRepository.getResolvedPrice simulation
-    if (
-      query.includes("SELECT") && query.includes("pr.country") && query.includes("pr.currency") &&
-      query.includes("FROM products p") && query.includes("LEFT JOIN LATERAL")
-    ) {
-      const country = resolvedValues[0] as string
-      const productCode = resolvedValues[2] as string
+    const getProductByCodeResult = productQueryMocks.simulateGetProductByCode(query, resolvedValues, attachTemplate)
+    if (getProductByCodeResult) return getProductByCodeResult
 
-      const product = PricingTestProducts.find((p) => p.product_code === productCode)
-      if (product && product.price_rows) {
-        const priceRow = product.price_rows.find((pr) => pr.country === country) ??
-          product.price_rows.find((pr) => pr.country === "*")
-
-        if (priceRow) {
-          return attachTemplate(Effect.succeed([{
-            country: priceRow.country,
-            currency: priceRow.currency,
-            amount: priceRow.amount,
-            vat_info: priceRow.vat_info || null
-          }]))
-        }
-      }
-
-      // No pricing found for this specific country
-      return attachTemplate(Effect.succeed([{
-        country: null,
-        currency: null,
-        amount: null,
-        vat_info: null
-      }]))
-    }
+    const getResolvedPriceResult = productQueryMocks.simulateGetResolvedPrice(query, resolvedValues, attachTemplate)
+    if (getResolvedPriceResult) return getResolvedPriceResult
 
     // Default: successful empty result
     return attachTemplate(Effect.succeed([]))

@@ -24,7 +24,6 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
           })
       })
 
-
       const _getActiveProducts = SqlSchema.findAll({
         Request: Schema.Void,
         Result: Product,
@@ -58,7 +57,6 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
 
       return {
         createProduct: (product: Product) => _createProduct(product),
-
 
         getActiveProducts: () => _getActiveProducts(),
         getSellableProducts: () => _getSellableProducts(),

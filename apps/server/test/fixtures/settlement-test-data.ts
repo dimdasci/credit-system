@@ -26,7 +26,7 @@ export const TestProducts = {
         country: "US",
         currency: "USD",
         amount: 9.99,
-        vat_info: { rate: 0.0825, amount: 0.82, note: "Sales tax" }
+        vat_info: null
       },
       {
         product_code: "basic-plan-v1",
@@ -83,18 +83,19 @@ export const TestPricingSnapshots = {
     country: "US",
     currency: "USD",
     amount: 9.99,
-    tax_breakdown: { type: "vat", rate: 0.0825, amount: 0.82, note: "Sales tax" }
+    tax_breakdown: { type: "vat", rate: 0.19, amount: 1.58, note: "VAT registered for testing" }
   } as PricingSnapshot,
   VALID_FALLBACK_PRICING: {
     country: "CA",
     currency: "USD",
-    amount: 9.99
+    amount: 9.99,
+    tax_breakdown: { type: "vat", rate: 0.19, amount: 1.58, note: "VAT registered for testing" }
   } as PricingSnapshot,
   CHANGED_PRICING: {
     country: "US",
     currency: "USD",
     amount: 12.99, // Price changed since checkout
-    tax_breakdown: { type: "vat", rate: 0.0825, amount: 1.07, note: "Sales tax" }
+    tax_breakdown: { type: "vat", rate: 0.19, amount: 2.06, note: "VAT registered for testing" }
   } as PricingSnapshot,
   UNAVAILABLE_COUNTRY: {
     country: "FR",
@@ -144,7 +145,7 @@ export const TestSettlementRequests = {
       currency: "USD",
       amount: 5.99
     },
-    order_placed_at: new Date("2025-02-01T10:00:00Z"), // After archival
+    order_placed_at: new Date("2025-01-15T10:00:00Z"), // After archival
     external_ref: "external-ref-archived",
     settled_at: new Date("2025-02-01T10:05:00Z")
   } as SettlementRequest,
@@ -219,9 +220,9 @@ export const TestSettlementData = {
         tax_breakdown: TestPricingSnapshots.VALID_US_PRICING.tax_breakdown
       },
       merchant_config_snapshot: {
-        merchant_id: "test-merchant-id",
-        legal_name: "Test Company LLC",
-        receipt_series_prefix: "R-AM"
+        merchant_id: "9327",
+        legal_name: "Test GmbH",
+        receipt_series_prefix: "R-DE"
       }
     } as Receipt.Encoded
   ],

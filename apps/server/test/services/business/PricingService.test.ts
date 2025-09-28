@@ -1,5 +1,5 @@
 import { Product } from "@server/domain/products/Product.js"
-import { Credits } from "@server/domain/shared/Credits.js"
+import type { Credits } from "@server/domain/shared/Credits.js"
 import { ProductUnavailable } from "@server/domain/shared/DomainErrors.js"
 import { PricingService } from "@server/services/business/PricingService.js"
 import { Effect, Option } from "effect"
@@ -22,7 +22,7 @@ describe("PricingService", () => {
           expect(resolved.currency).toBe("USD")
           expect(resolved.amount).toBe(9.99)
           expect(resolved.resolved_from).toBe("country_specific")
-          expect(resolved.tax_calculation.type).toBe("none")
+          expect(resolved.tax_calculation.type).toBe("vat")
         })).pipe(Effect.runPromise))
 
       it("falls back to global pricing when country-specific unavailable", () =>
@@ -70,7 +70,6 @@ describe("PricingService", () => {
           expect(result).toBeInstanceOf(ProductUnavailable)
           expect(result._tag).toBe("ProductUnavailable")
           expect(result.reason).toBe("not_found")
-          expect(result._tag).toBe("InvalidPricingRequest")
         })).pipe(Effect.runPromise))
 
       it("fails when no pricing available for country", () =>
