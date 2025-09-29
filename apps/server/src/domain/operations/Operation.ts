@@ -50,10 +50,10 @@ export const OpenOperation = Operation.pipe(
 )
 
 export const CompletedOperation = Operation.pipe(
-  Schema.filter((op): op is Operation => op.status === "completed" && Option.isSome((op as any).closed_at))
+  Schema.filter((op): op is Operation => op.status === "completed" && Option.isSome(op.closed_at))
 )
 
 // Schema-level invariant: expires_at must be strictly after opened_at
 export const OperationValidated = Operation.pipe(
-  Schema.filter((op) => (op as any).expires_at > (op as any).opened_at)
+  Schema.filter((op) => op.expires_at > op.opened_at)
 )

@@ -1,4 +1,4 @@
-import { HttpApiEndpoint, HttpApiGroup } from "@effect/platform"
+import { Rpc, RpcGroup } from "@effect/rpc"
 import { Schema } from "effect"
 
 export const Version = Schema.Struct({
@@ -9,8 +9,9 @@ export const Version = Schema.Struct({
   environment: Schema.String
 })
 
-export const VersionApiGroup = HttpApiGroup.make("version")
-  .add(
-    HttpApiEndpoint.get("getVersion", "/version")
-      .addSuccess(Version)
-  )
+export const getVersionRpc = Rpc.make("getVersion", {
+  success: Version,
+  error: Schema.String
+})
+
+export const VersionRpcs = RpcGroup.make(getVersionRpc)

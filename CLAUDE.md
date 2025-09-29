@@ -9,6 +9,7 @@ Credit Lodger is a minimal credit ledger service designed for managing user purc
 ## Knowledge Base
 
 The project documentation is available in the `knowledge` directory:
+
 - `knowledge/domain` contains detailed domain requirements, with summary and index in @knowledge/domain/README.md.
 - `knowledge/tech-solution` contains technical solution design and implementation details, @knowledge/tech-solution/README.md.
 - `knowledge/guidelines/project/` contains guidelines for github issues usage.
@@ -16,7 +17,53 @@ The project documentation is available in the `knowledge` directory:
 
 ## Type Safety
 
-The project is built on Effect framework (https://effect.website/docs/) with strong emphasis on type safety and correctness. The usage of `any` type is prohibited in the codebase to ensure type safety. Every time you face a type error you must treat it as a luck of type system understanding. In that case slow down, read the documentation, effect source code, search for examples, and ask for help if needed.
+The project is built on Effect framework (https://effect.website/docs/) with strong emphasis on type safety and correctness. The usage of `any` type is prohibited in the codebase to ensure type safety. Every time you face a type error you must treat it as a lack of type system understanding. In that case slow down, read the documentation, effect source code, search for examples, and ask for help if needed.
+
+### Critical Type Safety Requirements
+
+**NEVER use `as any` in the following contexts:**
+
+1. **Effect Schema filters** - Effect Schema preserves type information correctly:
+```typescript
+// ❌ FORBIDDEN - unnecessary type assertions
+export const ActiveProduct = Product.pipe(
+  Schema.filter((p): p is Product =>
+    p.isActive() && Option.isSome((p as any).price_rows)
+  )
+)
+
+// ✅ CORRECT - Effect Schema preserves types properly
+export const ActiveProduct = Product.pipe(
+  Schema.filter((p): p is Product =>
+    p.isActive() && Option.isSome(p.price_rows)
+  )
+)
+```
+
+2. **Domain-defined structures** - Always implement exact schemas from domain specifications:
+```typescript
+// ❌ FORBIDDEN - Schema.Unknown when domain requirements exist
+purchase_snapshot: Schema.Record({
+  key: Schema.String,
+  value: Schema.Unknown
+})
+
+// ✅ CORRECT - Use domain-specified schemas
+export const PurchaseSnapshot = Schema.Struct({
+  product_code: Schema.String,
+  product_title: Schema.String,
+  external_ref: Schema.String,
+  country: Schema.String,
+  currency: Schema.String,
+  amount: Schema.Number,
+  tax_breakdown: Schema.optional(TaxBreakdown)
+})
+```
+
+**Acceptable `as any` usage:**
+- Test infrastructure and mocking (confined to test files)
+- SQL template workarounds in test harnesses (when Effect SQL internals must be accessed)
+- Working around third-party library type limitations (document the reason)
 
 ## Effect Framework Guidelines
 
@@ -40,14 +87,17 @@ Effect.gen(function* (_) {
 
 ```typescript
 // ❌ Forbidden - fake TemplateStringsArray
-const result = yield* sql(Object.assign([query], {raw: [query]}), ...params)
+const result = yield * sql(Object.assign([query], { raw: [query] }), ...params)
 
 // ✅ Correct - conditional SQL fragments (like LedgerRepository)
 const statusFilter = opts.status ? sql`AND status = ${opts.status}` : sql``
 const typeFilter = opts.type ? sql`AND type = ${opts.type}` : sql``
-const limitClause = typeof opts.limit === "number" ? sql`LIMIT ${opts.limit}` : sql``
+const limitClause =
+  typeof opts.limit === "number" ? sql`LIMIT ${opts.limit}` : sql``
 
-const result = yield* sql`
+const result =
+  yield *
+  sql`
   SELECT * FROM table
   WHERE user_id = ${userId}
   ${statusFilter}
@@ -61,8 +111,7 @@ const result = yield* sql`
 ```typescript
 const attachTemplate = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
   if (typeof effect === "object" && effect !== null) {
-    (effect as any).strings = strings
-    (effect as any).values = values
+    ;(effect as any).strings = strings(effect as any).values = values
   }
   return effect
 }
@@ -73,16 +122,29 @@ const attachTemplate = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
 
 Project repository https://github.com/dimdasci/credit-system/. Use MCP tools to work with issues.
 
-Github CLI tool `gh` is available in the project. 
+Github CLI tool `gh` is available in the project.
 
 ### Task Definition Rule:
 
 Use only Acceptance Criteria for functional requirements. Skip Implementation Checklist and Definition of Done unless they add unique value:
+
 - Acceptance Criteria: What the feature must do (user/business perspective)
 - Implementation Checklist: Only if complex technical steps need tracking
 - Definition of Done: Only if non-standard quality gates apply (default: tests pass, code works)
 
 Default assumption: Tasks are done when they work as specified and tests pass. Don't repeat the same requirements in multiple sections.
+
+## Task Completion Criteria
+
+**CRITICAL**: A task is complete ONLY when ALL of the following conditions are met:
+
+1. No TypeScript compilation errors (`pnpm run check` passes)
+2. No linter errors (`pnpm run lint` passes)
+3. ALL tests pass successfully (`pnpm test` passes)
+4. No TODO/FIXME comments remain in the codebase
+5. No stubs, mocks, or temporary code remain in the codebase
+
+**Failing tests = incomplete implementation.** Never claim a task is complete or "production-ready" when tests are failing. Fix all issues until the entire test suite passes.
 
 ## Commands
 

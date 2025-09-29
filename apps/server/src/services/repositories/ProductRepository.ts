@@ -1,9 +1,8 @@
 import { MerchantContext } from "@credit-system/shared"
 import * as SqlSchema from "@effect/sql/SqlSchema"
-import { Effect, Layer, Schema } from "effect"
-import { DatabaseManager } from "../../db/DatabaseManager.js"
-import { DatabaseManagerLive, PgLayerFactoryLive } from "../../db/DatabaseManagerImpl.js"
+import { Effect, Schema } from "effect"
 import { Product } from "../../domain/products/Product.js"
+import { DatabaseManager } from "../external/DatabaseManager.js"
 
 export class ProductRepository extends Effect.Service<ProductRepository>()(
   "ProductRepository",
@@ -21,22 +20,6 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
               INSERT INTO products (product_code, title, credits, access_period_days, distribution, grant_policy, effective_at, archived_at)
               VALUES (${product.product_code}, ${product.title}, ${product.credits}, ${product.access_period_days}, 
                      ${product.distribution}, ${product.grant_policy}, ${product.effective_at}, ${product.archived_at})
-            `
-          })
-      })
-
-      const _getProductByCode = SqlSchema.single({
-        Request: Schema.String,
-        Result: Product,
-        execute: (code) =>
-          Effect.gen(function*() {
-            const sql = yield* db.getConnection(merchantContext.merchantId)
-            return yield* sql`
-              SELECT * FROM products 
-              WHERE product_code = ${code}
-              AND effective_at <= NOW()
-              AND (archived_at IS NULL OR archived_at > NOW())
-              LIMIT 1
             `
           })
       })
@@ -74,11 +57,6 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
 
       return {
         createProduct: (product: Product) => _createProduct(product),
-
-        getProductByCode: (code: string) =>
-          _getProductByCode(code).pipe(
-            Effect.catchTag("NoSuchElementException", () => Effect.succeed(null))
-          ),
 
         getActiveProducts: () => _getActiveProducts(),
         getSellableProducts: () => _getSellableProducts(),
@@ -168,7 +146,6 @@ export class ProductRepository extends Effect.Service<ProductRepository>()(
             return result[0]?.active || false
           })
       }
-    }),
-    dependencies: [Layer.provide(DatabaseManagerLive, PgLayerFactoryLive)]
+    })
   }
 ) {}

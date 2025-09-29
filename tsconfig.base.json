@@ -12,7 +12,11 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "types": [],
     "isolatedModules": true,
     "sourceMap": true,
@@ -35,13 +39,27 @@
     "module": "NodeNext",
     "incremental": true,
     "removeComments": false,
-    "plugins": [{ "name": "@effect/language-service" }],
+    "plugins": [
+      {
+        "name": "@effect/language-service"
+      }
+    ],
     "paths": {
-      "@credit-system/rpc": ["./packages/rpc/src/index.ts"],
-      "@credit-system/client": ["./packages/client/src/index.ts"],
-      "@credit-system/shared": ["./packages/shared/src/index.ts"],
-      "@server/*": ["./apps/server/src/*"],
-      "server/*": ["./apps/server/src/*"]
+      "@credit-system/rpc": [
+        "./packages/rpc/src/index.ts"
+      ],
+      "@credit-system/client": [
+        "./packages/client/src/index.ts"
+      ],
+      "@credit-system/shared": [
+        "./packages/shared/src/index.ts"
+      ],
+      "@server/*": [
+        "./apps/server/src/*"
+      ],
+      "server/*": [
+        "./apps/server/src/*"
+      ]
     }
   }
 }

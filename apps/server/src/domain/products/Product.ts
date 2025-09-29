@@ -1,6 +1,13 @@
 import { Credits } from "@server/domain/shared/Credits.js"
 import { Option, Schema } from "effect"
 
+// VAT info schema based on domain specifications
+export const VatInfo = Schema.Struct({
+  rate: Schema.Number,
+  amount: Schema.Number,
+  note: Schema.String
+})
+
 // Product distribution type enumeration
 export const ProductDistribution = Schema.Literal("sellable", "grant")
 
@@ -13,7 +20,7 @@ export class PriceRow extends Schema.Class<PriceRow>("PriceRow")({
   country: Schema.String, // ISO-3166-1 alpha-2 or "*" for fallback
   currency: Schema.String,
   amount: Schema.Number.pipe(Schema.positive()), // decimal(19,4)
-  vat_info: Schema.OptionFromNullOr(Schema.Record({ key: Schema.String, value: Schema.Unknown })) // JSONB
+  vat_info: Schema.OptionFromNullOr(VatInfo) // JSONB
 }) {}
 
 export namespace PriceRow {
@@ -60,7 +67,7 @@ export class Product extends Schema.Class<Product>("Product")({
   // Price resolution logic
   findPriceForCountry(country: string): PriceRow | undefined {
     if (Option.isNone(this.price_rows)) return undefined
-    const priceRows = (this.price_rows as any).value as Array<PriceRow>
+    const priceRows = this.price_rows.value
 
     // Try country-specific first
     const countrySpecific = priceRows.find((pr) => pr.country === country)
@@ -83,7 +90,7 @@ export namespace Product {
 // Schema-level invariant: grant requires grant_policy; sellable forbids it
 export const ProductValidated = Product.pipe(
   Schema.filter((p) =>
-    ((p as any).distribution === "grant" && Option.isSome((p as any).grant_policy)) ||
-    ((p as any).distribution === "sellable" && Option.isNone((p as any).grant_policy))
+    (p.distribution === "grant" && Option.isSome(p.grant_policy)) ||
+    (p.distribution === "sellable" && Option.isNone(p.grant_policy))
   )
 )

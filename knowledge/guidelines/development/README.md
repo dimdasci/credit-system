@@ -62,6 +62,20 @@ Screaming architecture principles for server application structure:
 - Clean separation between business logic and technical concerns
 - Maintainable aggregate boundaries preventing cross-domain coupling
 
+### [Effect Testing Patterns](./effect-testing-patterns.md)
+Essential patterns for testing Effect-based services and domain-driven test design:
+- **Domain Contract Testing** - Test business behavior, not implementation details
+- **Effect Layer Management** - Smart dependency configuration and test isolation
+- **Service-Agnostic Errors** - Domain errors represent business scenarios, not technical attribution
+- **TDD Principles** - Tests drive implementation based on business requirements
+- **Layer Composition Patterns** - Layer.fresh(), dependency injection, and mock management
+
+**Key Insights:**
+- Repository dependencies should be dynamic, service dependencies can be static
+- Effect.provide chaining causes service lifecycle issues - merge layers instead
+- Test the contract (success = service result, failure = domain error), not implementation
+- Domain errors are service-agnostic - focus on business failure scenarios
+
 
 ## Development Workflow Summary
 

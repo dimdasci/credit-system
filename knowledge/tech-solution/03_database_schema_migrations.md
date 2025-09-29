@@ -344,6 +344,8 @@ Note: Audit Retention
 CREATE TABLE user_balance (
     user_id            text PRIMARY KEY,
     balance            integer NOT NULL DEFAULT 0,
+    total_credits      integer NOT NULL DEFAULT 0,
+    total_debits       integer NOT NULL DEFAULT 0,
     last_updated       timestamptz NOT NULL DEFAULT now(),
     last_entry_id      uuid NOT NULL,
     last_entry_month   date NOT NULL,
@@ -354,23 +356,57 @@ CREATE TABLE user_balance (
 -- Ensure balance accuracy with trigger
 CREATE OR REPLACE FUNCTION update_user_balance()
 RETURNS trigger AS $$
+DECLARE
+  credit_amount INTEGER := CASE WHEN NEW.amount > 0 THEN NEW.amount ELSE 0 END;
+  debit_amount INTEGER := CASE WHEN NEW.amount < 0 THEN NEW.amount ELSE 0 END;  -- Keep negative
 BEGIN
-    INSERT INTO user_balance (user_id, balance, last_entry_id, last_entry_month)
-    VALUES (NEW.user_id, NEW.amount, NEW.entry_id, NEW.created_month)
-    ON CONFLICT (user_id) 
-    DO UPDATE SET 
-        balance = user_balance.balance + NEW.amount,
-        last_updated = now(),
-        last_entry_id = NEW.entry_id,
-        last_entry_month = NEW.created_month;
-    RETURN NEW;
+  INSERT INTO user_balance (user_id, balance, total_credits, total_debits, last_entry_id, last_entry_month)
+  VALUES (NEW.user_id, NEW.amount, credit_amount, debit_amount, NEW.entry_id, NEW.created_month)
+  ON CONFLICT (user_id) DO UPDATE SET
+    balance = user_balance.balance + NEW.amount,
+    total_credits = user_balance.total_credits + credit_amount,
+    total_debits = user_balance.total_debits + debit_amount,  -- Domain compliant
+    last_updated = now(),
+    last_entry_id = NEW.entry_id,
+    last_entry_month = NEW.created_month;
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER update_user_balance_trigger
     AFTER INSERT ON ledger_entries
     FOR EACH ROW EXECUTE FUNCTION update_user_balance();
+
+-- Balance invariant constraint
+ALTER TABLE user_balance
+  ADD CONSTRAINT balance_invariant
+  CHECK (balance = total_credits + total_debits);
 ```
+
+#### Intelligent Partition Scanning
+
+The system implements intelligent partition scanning for lot queries to avoid expensive full-table scans:
+
+```sql
+-- Dynamic partition boundary calculation
+SELECT MAX(access_period_days) as max_access_period_days
+FROM products
+WHERE archived_at IS NULL;
+
+-- Only scan partitions that could contain active lots
+WHERE user_id = ${user_id}
+  AND created_month >= ${oldest_possible_month}
+```
+
+**Performance Benefits:**
+- **Short-term products (30 days)**: Scans 1 month vs 12+ months (92% reduction)
+- **Mixed products (90 days max)**: Scans 3 months vs 12+ months (75% reduction)
+- **Long-term products (365 days)**: Scans exact boundary vs arbitrary 365-day assumption
+
+**Key Optimizations:**
+1. **Dynamic Calculation**: Based on actual `access_period_days` from active products
+2. **Active Products Only**: `WHERE archived_at IS NULL` excludes discontinued products
+3. **Fallback Protection**: Defaults to 365 days if no products exist
 
 ### Partitioning Strategy
 
@@ -840,8 +876,8 @@ flowchart TD
     J --> L[Return Oldest Lot]
     
     M[New Ledger Entry] --> N[Trigger: Update Balance Cache]
-    N --> O[Recalculate User Total]
-    O --> P[Update user_balance.balance]
+    N --> O[Update balance, total_credits, total_debits]
+    O --> P[Enforce balance = total_credits + total_debits]
     P --> Q[Set last_entry_id = new_entry]
     
     R[Operation Debit Creation] --> S[FIFO: Find Target Lot]
@@ -870,7 +906,8 @@ flowchart TD
 
 **Balance Calculation Principles:**
 - **Real-time Accuracy**: Balance = SUM(all ledger_entries.amount for user)
-- **Performance Cache**: `user_balance` table updated via triggers
+- **Performance Cache**: `user_balance` table with cached `balance`, `total_credits`, `total_debits` updated via triggers
+- **Intelligent Partition Scanning**: Dynamic calculation based on maximum product expiration periods
 - **FIFO Consumption**: Oldest non-expired lot with positive balance selected first
 - **Overdraft Support**: Individual lots can go negative while preserving FIFO order
 - **Automated Maintenance**: Background jobs handle expiry and cleanup operations

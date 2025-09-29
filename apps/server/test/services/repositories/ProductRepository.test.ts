@@ -1,5 +1,5 @@
 import { MerchantContext } from "@credit-system/shared"
-import { DatabaseManager } from "@server/db/DatabaseManager.js"
+import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
 import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
 import { Effect, Layer, Option } from "effect"
 import { beforeEach, describe, expect, it } from "vitest"
@@ -15,12 +15,15 @@ const mockMutations = {
 
 const referenceNow = new Date("2025-03-01T00:00:00Z")
 
-const TestPriceRows: Record<string, Array<{
-  country: string
-  currency: string
-  amount: number
-  vat_info: Record<string, unknown> | null
-}>> = {
+const TestPriceRows: Record<
+  string,
+  Array<{
+    country: string
+    currency: string
+    amount: number
+    vat_info: Record<string, unknown> | null
+  }>
+> = {
   TEST_BASIC: [
     { country: "US", currency: "USD", amount: 19.99, vat_info: { rate: 0.2 } },
     { country: "*", currency: "USD", amount: 20.99, vat_info: null }
@@ -45,28 +48,6 @@ const mockSqlClient = {
     // Handle empty fragment
     if (query === "" && values.length === 0) {
       return Effect.succeed("") // Empty fragment
-    }
-
-    // Handle single product lookup
-    if (
-      query.includes("SELECT * FROM products") && query.includes("WHERE product_code = ?") && query.includes("LIMIT 1")
-    ) {
-      if (!query.includes("AND effective_at <= NOW()")) {
-        throw new Error("Expected effective_at filter for getProductByCode")
-      }
-      if (!query.includes("AND (archived_at IS NULL OR archived_at > NOW())")) {
-        throw new Error("Expected archived_at filter for getProductByCode")
-      }
-      const productCode = values[0] as string
-      const product = TestProductsArray.find((p) => p.product_code === productCode)
-      if (!product) {
-        return Effect.succeed([])
-      }
-
-      const effectiveAt = new Date(product.effective_at)
-      const archivedAt = product.archived_at ? new Date(product.archived_at) : null
-      const activeNow = effectiveAt <= referenceNow && (!archivedAt || archivedAt > referenceNow)
-      return Effect.succeed(activeNow ? [product] : [])
     }
 
     // Handle active products query
@@ -194,7 +175,7 @@ const MockMerchantContextLayer = Layer.succeed(MerchantContext, {
 
 const TestLayer = Layer.provide(
   Layer.provide(
-    ProductRepository.DefaultWithoutDependencies,
+    ProductRepository.Default,
     MockDatabaseManagerLayer
   ),
   MockMerchantContextLayer
@@ -206,35 +187,6 @@ beforeEach(() => {
 })
 
 describe("ProductRepository Business Logic", () => {
-  describe("getProductByCode", () => {
-    it("returns product when it exists", () =>
-      Effect.gen(function*() {
-        const repo = yield* ProductRepository
-        const product = yield* repo.getProductByCode("TEST_BASIC")
-
-        expect(product).not.toBeNull()
-        expect(product?.product_code).toBe("TEST_BASIC")
-        expect(product?.title).toBe("Test Basic Package")
-        expect(product?.distribution).toBe("sellable")
-      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
-
-    it("returns null when product does not exist", () =>
-      Effect.gen(function*() {
-        const repo = yield* ProductRepository
-        const product = yield* repo.getProductByCode("NON_EXISTENT")
-
-        expect(product).toBeNull()
-      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
-
-    it("treats archived products as unavailable", () =>
-      Effect.gen(function*() {
-        const repo = yield* ProductRepository
-        const product = yield* repo.getProductByCode("TEST_ARCHIVED")
-
-        expect(product).toBeNull()
-      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
-  })
-
   describe("getActiveProducts", () => {
     it("returns only active products (not archived, effective now)", () =>
       Effect.gen(function*() {

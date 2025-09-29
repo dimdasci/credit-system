@@ -57,8 +57,7 @@ describe("LedgerRepository balance projections", () => {
         expect(summary.total_credits).toBe(150)
         expect(summary.total_debits).toBe(25)
         expect(summary.current_balance).toBe(125)
-        expect(summary.active_lots).toBeGreaterThan(0)
-        expect(summary.expired_lots).toBeGreaterThanOrEqual(0)
+        // Lot counts removed - use dedicated getActiveLots method instead
       }).pipe(Effect.provide(TestLayer), Effect.runPromise))
   })
 })

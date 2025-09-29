@@ -1,6 +1,7 @@
 import { SqlClient } from "@effect/sql"
-import { DatabaseManager, MissingMerchantDatabaseUrlError } from "@server/db/DatabaseManager.js"
-import { DatabaseManagerLive, PgLayerFactory } from "@server/db/DatabaseManagerImpl.js"
+import { ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
+import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
+import { DatabaseManagerLive, PgLayerFactory } from "@server/services/external/DatabaseManagerImpl.js"
 import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect"
 import { describe, expect, it, vi } from "vitest"
 
@@ -46,7 +47,7 @@ describe("DatabaseManager", () => {
       const error = Cause.failureOption(result.cause)
       expect(Option.isSome(error)).toBe(true)
       if (Option.isSome(error)) {
-        expect(error.value).toBeInstanceOf(MissingMerchantDatabaseUrlError)
+        expect(error.value).toBeInstanceOf(ServiceUnavailable)
       }
     }
   })

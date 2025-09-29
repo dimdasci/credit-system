@@ -114,6 +114,8 @@ try {
 
 ### Purchase Settlement Contracts
 
+**Architectural Note**: The purchase settlement response does not include `userBalance` to maintain separation of concerns and avoid transaction complexity. Upstream applications should query balance separately using dedicated balance endpoints.
+
 #### Purchase.Settled Command Schema
 ```typescript
 // packages/rpc/src/schemas/PurchaseContracts.ts
@@ -152,14 +154,10 @@ export const PurchaseSettledSuccess = Schema.Struct({
   receipt: Schema.Struct({
     receiptId: Schema.String,
     receiptNumber: Schema.String, // "R-ACME-2025-0001"
-    issuedAt: Schema.Date,
-    downloadUrl: Schema.optional(Schema.String)
-  }),
-  userBalance: Schema.Struct({
-    balance: Schema.Int,
-    currency: Schema.Literal("credits"),
-    lastUpdated: Schema.Date
+    issuedAt: Schema.Date
   })
+  // Note: userBalance removed - use separate balance endpoint for current balance
+  // This maintains separation of concerns and avoids transaction complexity
 })
 
 export const PurchaseSettledError = Schema.Union(
@@ -474,8 +472,7 @@ export const GetReceiptByIdSuccess = Schema.Struct({
     receiptNumber: Schema.String,
     issuedAt: Schema.Date,
     userId: Schema.String,
-    lotId: Schema.String,
-    downloadUrl: Schema.optional(Schema.String)
+    lotId: Schema.String
   })
 })
 
@@ -508,8 +505,7 @@ export const ListReceiptsSuccess = Schema.Struct({
     receiptId: Schema.String,
     receiptNumber: Schema.String,
     issuedAt: Schema.Date,
-    lotId: Schema.String,
-    downloadUrl: Schema.optional(Schema.String)
+    lotId: Schema.String
   })),
   pagination: Schema.Struct({
     total: Schema.Number,
