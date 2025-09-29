@@ -17,7 +17,53 @@ The project documentation is available in the `knowledge` directory:
 
 ## Type Safety
 
-The project is built on Effect framework (https://effect.website/docs/) with strong emphasis on type safety and correctness. The usage of `any` type is prohibited in the codebase to ensure type safety. Every time you face a type error you must treat it as a luck of type system understanding. In that case slow down, read the documentation, effect source code, search for examples, and ask for help if needed.
+The project is built on Effect framework (https://effect.website/docs/) with strong emphasis on type safety and correctness. The usage of `any` type is prohibited in the codebase to ensure type safety. Every time you face a type error you must treat it as a lack of type system understanding. In that case slow down, read the documentation, effect source code, search for examples, and ask for help if needed.
+
+### Critical Type Safety Requirements
+
+**NEVER use `as any` in the following contexts:**
+
+1. **Effect Schema filters** - Effect Schema preserves type information correctly:
+```typescript
+// ❌ FORBIDDEN - unnecessary type assertions
+export const ActiveProduct = Product.pipe(
+  Schema.filter((p): p is Product =>
+    p.isActive() && Option.isSome((p as any).price_rows)
+  )
+)
+
+// ✅ CORRECT - Effect Schema preserves types properly
+export const ActiveProduct = Product.pipe(
+  Schema.filter((p): p is Product =>
+    p.isActive() && Option.isSome(p.price_rows)
+  )
+)
+```
+
+2. **Domain-defined structures** - Always implement exact schemas from domain specifications:
+```typescript
+// ❌ FORBIDDEN - Schema.Unknown when domain requirements exist
+purchase_snapshot: Schema.Record({
+  key: Schema.String,
+  value: Schema.Unknown
+})
+
+// ✅ CORRECT - Use domain-specified schemas
+export const PurchaseSnapshot = Schema.Struct({
+  product_code: Schema.String,
+  product_title: Schema.String,
+  external_ref: Schema.String,
+  country: Schema.String,
+  currency: Schema.String,
+  amount: Schema.Number,
+  tax_breakdown: Schema.optional(TaxBreakdown)
+})
+```
+
+**Acceptable `as any` usage:**
+- Test infrastructure and mocking (confined to test files)
+- SQL template workarounds in test harnesses (when Effect SQL internals must be accessed)
+- Working around third-party library type limitations (document the reason)
 
 ## Effect Framework Guidelines
 
