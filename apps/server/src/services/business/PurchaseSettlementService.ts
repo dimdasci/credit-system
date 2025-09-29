@@ -2,12 +2,14 @@ import { MerchantContext } from "@credit-system/shared"
 import { Lot } from "@server/domain/credit-ledger/Lot.js"
 import type { Product } from "@server/domain/products/Product.js"
 import { Receipt } from "@server/domain/receipts/Receipt.js"
-import type { DuplicateAdminAction } from "@server/domain/shared/DomainErrors.js"
-import { InvalidRequest, ProductUnavailable, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
+import type { DuplicateAdminAction, ProductUnavailable } from "@server/domain/shared/DomainErrors.js"
+import { InvalidRequest, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
+import type { PricingSnapshot } from "@server/services/business/PricingService.js"
+import { PricingService } from "@server/services/business/PricingService.js"
+import { ProductService } from "@server/services/business/ProductService.js"
 import { DatabaseManager } from "@server/services/external/DatabaseManager.js"
 import { MerchantConfigService } from "@server/services/external/MerchantConfigService.js"
 import { LedgerRepository } from "@server/services/repositories/LedgerRepository.js"
-import { ProductRepository } from "@server/services/repositories/ProductRepository.js"
 import { ReceiptRepository } from "@server/services/repositories/ReceiptRepository.js"
 import { Effect, Option, Schema } from "effect"
 import { randomUUID } from "node:crypto"
@@ -20,20 +22,6 @@ export interface SettlementRequest {
   order_placed_at: Date
   external_ref: string
   settled_at: Date
-}
-
-export interface PricingSnapshot {
-  country: string // ISO-3166-1 alpha-2
-  currency: string // ISO-4217
-  amount: number // tax-inclusive
-  tax_breakdown?: TaxBreakdown
-}
-
-export interface TaxBreakdown {
-  type: "vat" | "turnover" | "none"
-  rate?: number
-  amount?: number
-  note?: string
 }
 
 export interface SettlementResult {
@@ -50,73 +38,6 @@ export interface PurchaseSettlementServiceContract {
     ProductUnavailable | ServiceUnavailable | DuplicateAdminAction | InvalidRequest
   >
 }
-
-const loadActiveProduct = (request: SettlementRequest) =>
-  Effect.gen(function*() {
-    const productRepo = yield* ProductRepository
-    const product = yield* productRepo.getProductByCode(request.product_code)
-
-    if (!product) {
-      return yield* Effect.fail(
-        new ProductUnavailable({
-          product_code: request.product_code,
-          country: request.pricing_snapshot.country,
-          reason: "not_found"
-        })
-      )
-    }
-
-    const isActive = yield* productRepo.isProductActive(
-      request.product_code,
-      request.order_placed_at
-    )
-
-    if (!isActive) {
-      return yield* Effect.fail(
-        new ProductUnavailable({
-          product_code: request.product_code,
-          country: request.pricing_snapshot.country,
-          reason: "archived"
-        })
-      )
-    }
-
-    return product
-  })
-
-const validatePricingSnapshot = (request: SettlementRequest) =>
-  Effect.gen(function*() {
-    const productRepo = yield* ProductRepository
-    const resolvedPrice = yield* productRepo.getResolvedPrice(
-      request.product_code,
-      request.pricing_snapshot.country
-    )
-
-    if (!resolvedPrice) {
-      return yield* Effect.fail(
-        new ProductUnavailable({
-          product_code: request.product_code,
-          country: request.pricing_snapshot.country,
-          reason: "not_available_in_country"
-        })
-      )
-    }
-
-    if (
-      resolvedPrice.amount !== request.pricing_snapshot.amount ||
-      resolvedPrice.currency !== request.pricing_snapshot.currency
-    ) {
-      return yield* Effect.fail(
-        new ProductUnavailable({
-          product_code: request.product_code,
-          country: request.pricing_snapshot.country,
-          reason: "pricing_changed"
-        })
-      )
-    }
-
-    return undefined
-  })
 
 const dataCorruptionError = () =>
   new ServiceUnavailable({
@@ -281,8 +202,15 @@ export class PurchaseSettlementService extends Effect.Service<PurchaseSettlement
 
           return yield* sqlClient.withTransaction(
             Effect.gen(function*() {
-              const product = yield* loadActiveProduct(request)
-              yield* validatePricingSnapshot(request)
+              const pricingService = yield* PricingService
+              const resolved = yield* pricingService.resolvePrice(
+                request.product_code,
+                request.pricing_snapshot.country,
+                request.order_placed_at
+              )
+              const product = resolved.product
+
+              yield* pricingService.validatePricingSnapshot(request.pricing_snapshot, resolved)
 
               const existingSettlement = yield* resolveExistingSettlement(request)
               if (existingSettlement) {
@@ -326,16 +254,7 @@ export class PurchaseSettlementService extends Effect.Service<PurchaseSettlement
 
               return { lot, receipt }
             })
-          ).pipe(Effect.mapError((error) => {
-            if (error && typeof error === "object" && "_tag" in error) {
-              return error
-            }
-            return new ServiceUnavailable({
-              service: "PurchaseSettlementService",
-              reason: "transaction_timeout",
-              retry_after_seconds: 30
-            })
-          }))
+          )
         })
 
       return {
@@ -344,9 +263,10 @@ export class PurchaseSettlementService extends Effect.Service<PurchaseSettlement
     }),
     dependencies: [
       LedgerRepository.Default,
-      ProductRepository.Default,
       ReceiptRepository.Default,
-      MerchantConfigService.Default
+      MerchantConfigService.Default,
+      PricingService.Default,
+      ProductService.Default
     ]
   }
 ) {}

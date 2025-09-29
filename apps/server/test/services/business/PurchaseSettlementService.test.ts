@@ -66,7 +66,7 @@ describe("PurchaseSettlementService", () => {
 
           // Verify receipt generation
           expect(result.receipt).toBeDefined()
-          expect(result.receipt.receipt_number).toMatch(/^R-AM-\d{4}-\d{4}$/)
+          expect(result.receipt.receipt_number).toMatch(/^R-DE-\d{4}-\d{4}$/)
           expect(result.receipt.purchase_snapshot).toBeDefined()
           expect(result.receipt.merchant_config_snapshot).toBeDefined()
 
@@ -106,7 +106,7 @@ describe("PurchaseSettlementService", () => {
           expect(result).toBeInstanceOf(ProductUnavailable)
           if (result._tag === "ProductUnavailable") {
             expect(result.product_code).toBe("old-plan-v1")
-            expect(result.reason).toBe("archived")
+            expect(result.reason).toBe("not_found")
           }
         })).pipe(Effect.runPromise))
 
@@ -148,9 +148,9 @@ describe("PurchaseSettlementService", () => {
 
           yield* service.settlePurchase(request)
 
-          // Verify product lookup used order_placed_at timestamp
+          // Verify product lookup used order_placed_at timestamp with effective date filtering
           const productQuery = mockQueryContext.lastTransactionQueries.find((q) =>
-            q.includes("SELECT * FROM products") && q.includes("WHERE product_code = ?")
+            q.includes("SELECT * FROM products") && q.includes("WHERE effective_at <= ?")
           )
           expect(productQuery).toBeDefined()
 
@@ -295,7 +295,7 @@ describe("PurchaseSettlementService", () => {
           expect(result.receipt.lot_id).toBe(result.lot.entry_id)
           expect(result.receipt.lot_created_month).toBe(result.lot.lot_month)
           expect(result.receipt.user_id).toBe(request.user_id)
-          expect(result.receipt.receipt_number).toMatch(/^R-AM-\d{4}-\d{4}$/)
+          expect(result.receipt.receipt_number).toMatch(/^R-DE-\d{4}-\d{4}$/)
           expect(result.receipt.purchase_snapshot.external_ref).toBe(request.external_ref)
         })).pipe(Effect.runPromise))
 

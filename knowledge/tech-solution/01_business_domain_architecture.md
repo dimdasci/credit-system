@@ -204,6 +204,36 @@ LedgerService (Effect.Service)
 
 ```
 
+```
+PricingService (Effect.Service)
+  Business Operations:
+    resolvePrice(product_code, country, at_time) -> Effect<ResolvedPricing, PricingError | ServiceUnavailable>
+    calculateTax(amount, merchant_config) -> Effect<TaxCalculation, PricingError>
+    validatePricingSnapshot(snapshot, resolved) -> Effect<void, PricingError>
+
+  Dependencies:
+    - ProductRepository (product and price data access)
+    - MerchantConfigService (tax regime configuration)
+
+  Business Rules:
+    - Country-specific pricing with fallback to global pricing ('*')
+    - Grant products have no pricing (return InvalidPricingRequest)
+    - Products must be active at requested time
+    - Tax calculation based on merchant configuration only (no cross-border rules)
+    - Error boundary pattern: infrastructure errors → ServiceUnavailable
+
+  Pricing Resolution Algorithm:
+    1. Validate product exists and is active at specified time
+    2. Try country-specific price row, then fallback to country='*'
+    3. Calculate tax breakdown based on merchant tax regime
+    4. Return ResolvedPricing with resolved_from indicator
+
+  Tax Calculation (Simplified):
+    - VAT: Applied when merchant.taxRegime='vat' AND merchant.vatRate configured
+    - Turnover: Uses merchant.taxStatusNote, no rate calculation
+    - None: Tax exempt status
+```
+
 #### Additional Business Services
 ```
 OperationRepository (Effect.Service)
@@ -287,11 +317,13 @@ Process: Purchase Settlement (payment → credit lot → receipt)
   Output: { lot, receipt }
 
   Steps:
-    1. Product Lookup and Validation
-       - Find product by code active at order_placed_at: effective_at <= order_placed_at AND (archived_at is null OR archived_at > order_placed_at)
-       - Validate product is available for pricing_snapshot.country at order_placed_at
-       - Resolve price for pricing_snapshot.country at order_placed_at using selection order: country-specific row, else fallback row with country="*"; amounts are tax-inclusive
-       - Validate pricing_snapshot matches the resolved catalog pricing (amount/currency) and tax details derived from merchant config at order_placed_at
+    1. Product Lookup and Pricing Validation (via PricingService)
+       - Call PricingService.resolvePrice(product_code, pricing_snapshot.country, order_placed_at)
+       - Resolves country-specific pricing with fallback to global pricing ('*')
+       - Validates product is active at order_placed_at (not archived, effective)
+       - Calculates tax breakdown based on merchant configuration
+       - Call PricingService.validatePricingSnapshot(pricing_snapshot, resolved_pricing)
+       - Ensures pricing_snapshot matches resolved catalog pricing with tolerance for rounding
 
     2. Create Credit Lot and Initial Entry (within transaction)
        - Create exactly one credit LedgerEntry (amount = +credits, reason = "purchase"). Its entry_id becomes the lot_id
@@ -314,8 +346,10 @@ Process: Purchase Settlement (payment → credit lot → receipt)
 ```
 
 **Business Rules Enforced:**
-- Product must be active and available for pricing snapshot country
-- Pricing snapshot must match available products at settlement time
+- Product validation via PricingService (active, not archived, not grant)
+- Country-specific pricing resolution with fallback to global pricing
+- Pricing snapshot validation with rounding tolerance (0.01 for amounts, 0.0001 for tax rates)
+- Tax calculation based on merchant configuration (VAT/turnover/none regimes)
 - Credit lot created at full value regardless of user's current debt
 - Receipt generated with complete merchant config snapshot
 - All operations within single database transaction
@@ -616,9 +650,9 @@ Architecture: Layered Service Composition
     - Usage: Called by business services for domain logic
 
   Layer 2: Business Services
-    - LedgerService, OperationManager, ExpiryProcessor, BalanceCalculator
+    - LedgerService, OperationManager, ExpiryProcessor, BalanceCalculator, PricingService
     - Dependencies: Repository services, pure functions
-    - Responsibilities: Transaction coordination, business process orchestration
+    - Responsibilities: Transaction coordination, business process orchestration, error boundary management
 
   Layer 3: Repository Services
     - LedgerRepository, ProductRepository, MerchantRepository, IdempotencyService
@@ -691,7 +725,46 @@ Pattern: External System Integration
 
 ### Error Handling
 
-The architecture uses Effect's tagged error system for type-safe error handling.
+The architecture uses Effect's tagged error system for type-safe error handling with error boundary patterns.
+
+#### Error Boundary Pattern
+
+Business services implement error boundaries that transform infrastructure errors into domain-appropriate errors:
+
+```typescript
+// Error transformation function - maps infrastructure errors to ServiceUnavailable
+const mapToServiceUnavailable = <A>(
+  effect: Effect.Effect<A, ConfigError | SqlError | ParseError | ...>,
+  context: string
+) =>
+  effect.pipe(
+    Effect.catchTags({
+      ConfigError: (error) => Effect.fail(new ServiceUnavailable({
+        service: "ServiceName",
+        reason: "corrupted_configuration",
+        details: `Configuration error: ${error.message}`
+      })),
+      SqlError: (error) => Effect.fail(new ServiceUnavailable({
+        service: "ServiceName",
+        reason: "database_connection_failure",
+        details: `Database error: ${error.message}`
+      })),
+      // ... other infrastructure error mappings
+    })
+  )
+
+// Usage in business services
+const productData = yield* mapToServiceUnavailable(
+  productRepo.getProductByCode(product_code),
+  product_code
+)
+```
+
+**Error Boundary Benefits:**
+- Clean separation between infrastructure and domain concerns
+- Consistent error handling across business services
+- Infrastructure failures become non-recoverable `ServiceUnavailable` errors
+- Business logic deals only with domain errors, not technical implementation details
 
 #### Business-Aligned Error Types
 
@@ -968,6 +1041,7 @@ graph TD
         BS2[OperationManager]
         BS3[ExpiryProcessor]
         BS4[BalanceCalculator]
+        BS5[PricingService]
     end
     
     subgraph "Repository Services Layer"
@@ -975,6 +1049,7 @@ graph TD
         RS2[ProductRepository]
         RS3[MerchantRepository]
         RS4[IdempotencyService]
+        RS5[MerchantConfigService]
     end
     
     subgraph "Infrastructure Layer"
@@ -996,6 +1071,8 @@ graph TD
     BS2 --> RS2
     BS3 --> RS1
     BS4 --> RS1
+    BS5 --> RS2
+    BS5 --> RS5
     
     RS1 --> IS1
     RS1 --> IS2
@@ -1004,6 +1081,7 @@ graph TD
     RS3 --> IS1
     RS3 --> IS2
     RS4 --> IS1
+    RS5 --> IS3
     
     %% Styling
     classDef pureFunc fill:#e8f5e8
@@ -1012,8 +1090,8 @@ graph TD
     classDef infraSvc fill:#fce4ec
     
     class PF1,PF2,PF3,PF4 pureFunc
-    class BS1,BS2,BS3,BS4 businessSvc
-    class RS1,RS2,RS3,RS4 repoSvc
+    class BS1,BS2,BS3,BS4,BS5 businessSvc
+    class RS1,RS2,RS3,RS4,RS5 repoSvc
     class IS1,IS2,IS3,IS4 infraSvc
 ```
 

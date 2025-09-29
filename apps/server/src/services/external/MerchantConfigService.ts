@@ -1,18 +1,7 @@
 import { MerchantContext } from "@credit-system/shared"
 import { MerchantConfig } from "@server/domain/merchants/MerchantConfig.js"
-import { Config, Data, Effect, Option, Schema } from "effect"
-import type { ConfigError } from "effect/ConfigError"
-
-// Error types for merchant configuration
-export class MissingMerchantConfigError extends Data.TaggedError("MissingMerchantConfigError")<{
-  readonly merchantId: string
-  readonly missingEnvVar: string
-}> {}
-
-export class InvalidMerchantConfigError extends Data.TaggedError("InvalidMerchantConfigError")<{
-  readonly merchantId: string
-  readonly reason: string
-}> {}
+import { ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
+import { Config, Effect, Option, Schema } from "effect"
 
 export class MerchantConfigService extends Effect.Service<MerchantConfigService>()(
   "MerchantConfigService",
@@ -25,33 +14,61 @@ export class MerchantConfigService extends Effect.Service<MerchantConfigService>
       const loadRequiredConfig = (
         envVar: string,
         merchantId: string
-      ): Effect.Effect<string, MissingMerchantConfigError | ConfigError> =>
+      ): Effect.Effect<string, ServiceUnavailable> =>
         Config.option(Config.string(envVar)).pipe(
           Effect.flatMap(Option.match({
-            onNone: () => Effect.fail(new MissingMerchantConfigError({ merchantId, missingEnvVar: envVar })),
+            onNone: () =>
+              Effect.fail(
+                new ServiceUnavailable({
+                  service: "MerchantConfigService",
+                  reason: "corrupted_configuration",
+                  details: `Missing required configuration: ${envVar} for merchant ${merchantId}`
+                })
+              ),
             onSome: (value) => Effect.succeed(value)
-          }))
+          })),
+          Effect.mapError(() =>
+            new ServiceUnavailable({
+              service: "MerchantConfigService",
+              reason: "corrupted_configuration",
+              details: `Error loading configuration: ${envVar} for merchant ${merchantId}`
+            })
+          )
         )
 
       const loadOptionalStringConfig = (
         envVar: string
-      ): Effect.Effect<string | undefined, ConfigError> =>
+      ): Effect.Effect<string | undefined, ServiceUnavailable> =>
         Config.option(Config.string(envVar)).pipe(
-          Effect.map(Option.getOrUndefined)
+          Effect.map(Option.getOrUndefined),
+          Effect.mapError(() =>
+            new ServiceUnavailable({
+              service: "MerchantConfigService",
+              reason: "corrupted_configuration",
+              details: `Error loading optional configuration: ${envVar}`
+            })
+          )
         )
 
       const loadOptionalNumberConfig = (
         envVar: string
-      ): Effect.Effect<number | undefined, ConfigError> =>
+      ): Effect.Effect<number | undefined, ServiceUnavailable> =>
         Config.option(Config.number(envVar)).pipe(
-          Effect.map(Option.getOrUndefined)
+          Effect.map(Option.getOrUndefined),
+          Effect.mapError(() =>
+            new ServiceUnavailable({
+              service: "MerchantConfigService",
+              reason: "corrupted_configuration",
+              details: `Error loading optional number configuration: ${envVar}`
+            })
+          )
         )
 
       return {
         // get config for current merchant context
         getCurrentMerchantConfig: (): Effect.Effect<
           MerchantConfig,
-          MissingMerchantConfigError | InvalidMerchantConfigError | ConfigError
+          ServiceUnavailable
         > =>
           Effect.gen(function*() {
             const { merchantId } = merchantContext
@@ -106,9 +123,10 @@ export class MerchantConfigService extends Effect.Service<MerchantConfigService>
 
             const config = yield* Schema.decodeUnknown(MerchantConfig)(configData).pipe(
               Effect.mapError((error) =>
-                new InvalidMerchantConfigError({
-                  merchantId,
-                  reason: `Schema validation failed: ${error.message}`
+                new ServiceUnavailable({
+                  service: "MerchantConfigService",
+                  reason: "data_corruption",
+                  details: `Schema validation failed for merchant ${merchantId}: ${error.message}`
                 })
               )
             )
@@ -116,9 +134,10 @@ export class MerchantConfigService extends Effect.Service<MerchantConfigService>
             // Business validation
             if (!config.validateTaxConfiguration()) {
               return yield* Effect.fail(
-                new InvalidMerchantConfigError({
-                  merchantId,
-                  reason: "Invalid tax configuration: VAT regime requires VAT rate"
+                new ServiceUnavailable({
+                  service: "MerchantConfigService",
+                  reason: "corrupted_configuration",
+                  details: `Invalid tax configuration for merchant ${merchantId}: VAT regime requires VAT rate`
                 })
               )
             }

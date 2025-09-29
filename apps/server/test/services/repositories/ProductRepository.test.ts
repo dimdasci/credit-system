@@ -50,28 +50,6 @@ const mockSqlClient = {
       return Effect.succeed("") // Empty fragment
     }
 
-    // Handle single product lookup
-    if (
-      query.includes("SELECT * FROM products") && query.includes("WHERE product_code = ?") && query.includes("LIMIT 1")
-    ) {
-      if (!query.includes("AND effective_at <= NOW()")) {
-        throw new Error("Expected effective_at filter for getProductByCode")
-      }
-      if (!query.includes("AND (archived_at IS NULL OR archived_at > NOW())")) {
-        throw new Error("Expected archived_at filter for getProductByCode")
-      }
-      const productCode = values[0] as string
-      const product = TestProductsArray.find((p) => p.product_code === productCode)
-      if (!product) {
-        return Effect.succeed([])
-      }
-
-      const effectiveAt = new Date(product.effective_at)
-      const archivedAt = product.archived_at ? new Date(product.archived_at) : null
-      const activeNow = effectiveAt <= referenceNow && (!archivedAt || archivedAt > referenceNow)
-      return Effect.succeed(activeNow ? [product] : [])
-    }
-
     // Handle active products query
     if (
       query.includes("SELECT * FROM products") && query.includes("WHERE effective_at <= NOW()") &&
@@ -209,35 +187,6 @@ beforeEach(() => {
 })
 
 describe("ProductRepository Business Logic", () => {
-  describe("getProductByCode", () => {
-    it("returns product when it exists", () =>
-      Effect.gen(function*() {
-        const repo = yield* ProductRepository
-        const product = yield* repo.getProductByCode("TEST_BASIC")
-
-        expect(product).not.toBeNull()
-        expect(product?.product_code).toBe("TEST_BASIC")
-        expect(product?.title).toBe("Test Basic Package")
-        expect(product?.distribution).toBe("sellable")
-      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
-
-    it("returns null when product does not exist", () =>
-      Effect.gen(function*() {
-        const repo = yield* ProductRepository
-        const product = yield* repo.getProductByCode("NON_EXISTENT")
-
-        expect(product).toBeNull()
-      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
-
-    it("treats archived products as unavailable", () =>
-      Effect.gen(function*() {
-        const repo = yield* ProductRepository
-        const product = yield* repo.getProductByCode("TEST_ARCHIVED")
-
-        expect(product).toBeNull()
-      }).pipe(Effect.provide(TestLayer), Effect.runPromise))
-  })
-
   describe("getActiveProducts", () => {
     it("returns only active products (not archived, effective now)", () =>
       Effect.gen(function*() {
