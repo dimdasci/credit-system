@@ -65,19 +65,19 @@ export const DebitEntry = LedgerEntry.pipe(
 // Schema-level invariants for issuance/debit role context
 export const LedgerEntryValidated = LedgerEntry.pipe(
   Schema.filter((entry) => {
-    const createdMonthFromDate = createMonthDate((entry as any).created_at as Date)
-    const baseCheck = (entry as any).created_month === createdMonthFromDate
+    const createdMonthFromDate = createMonthDate(entry.created_at)
+    const baseCheck = entry.created_month === createdMonthFromDate
 
-    if ((entry as any).amount > 0) {
+    if (entry.amount > 0) {
       return baseCheck &&
-        Option.isSome((entry as any).product_code) &&
-        Option.isSome((entry as any).expires_at) &&
-        (entry as any).lot_id === (entry as any).entry_id &&
-        (entry as any).lot_month === (entry as any).created_month
+        Option.isSome(entry.product_code) &&
+        Option.isSome(entry.expires_at) &&
+        entry.lot_id === entry.entry_id &&
+        entry.lot_month === entry.created_month
     } else {
       return baseCheck &&
-        Option.isNone((entry as any).product_code) &&
-        Option.isNone((entry as any).expires_at)
+        Option.isNone(entry.product_code) &&
+        Option.isNone(entry.expires_at)
     }
   })
 )

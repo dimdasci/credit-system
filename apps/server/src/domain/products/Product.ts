@@ -83,7 +83,7 @@ export namespace Product {
 // Schema-level invariant: grant requires grant_policy; sellable forbids it
 export const ProductValidated = Product.pipe(
   Schema.filter((p) =>
-    ((p as any).distribution === "grant" && Option.isSome((p as any).grant_policy)) ||
-    ((p as any).distribution === "sellable" && Option.isNone((p as any).grant_policy))
+    (p.distribution === "grant" && Option.isSome(p.grant_policy)) ||
+    (p.distribution === "sellable" && Option.isNone(p.grant_policy))
   )
 )
