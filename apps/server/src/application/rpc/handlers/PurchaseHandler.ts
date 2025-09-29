@@ -1,12 +1,7 @@
 import { PurchaseRpcs } from "@credit-system/rpc"
 import type * as SqlError from "@effect/sql/SqlError"
 import { Authorization } from "@server/application/rpc/middleware/AuthorizationMiddleware.js"
-import {
-  DuplicateAdminAction,
-  InvalidRequest,
-  ProductUnavailable,
-  ServiceUnavailable
-} from "@server/domain/shared/DomainErrors.js"
+import { InvalidRequest, ProductUnavailable, ServiceUnavailable } from "@server/domain/shared/DomainErrors.js"
 import { PurchaseSettlementService } from "@server/services/business/PurchaseSettlementService.js"
 import { Effect } from "effect"
 import type { ConfigError } from "effect/ConfigError"
@@ -70,7 +65,6 @@ export const PurchaseHandlers = ProtectedPurchaseRpcs.toLayer({
         (
           error:
             | ProductUnavailable
-            | DuplicateAdminAction
             | ServiceUnavailable
             | InvalidRequest
             | ConfigError
@@ -78,27 +72,27 @@ export const PurchaseHandlers = ProtectedPurchaseRpcs.toLayer({
             | ParseError
         ) => {
           if (error instanceof ProductUnavailable) {
+            // Map domain error reasons to RPC error reasons
+            const rpcReason = (() => {
+              switch (error.reason) {
+                case "not_found":
+                  return "not_found" as const
+                case "archived":
+                  return "archived" as const
+                case "not_available_in_country":
+                  return "country_unavailable" as const
+                case "pricing_changed":
+                  return "pricing_mismatch" as const
+                default:
+                  // This should never happen due to schema validation, but handle gracefully
+                  return "not_found" as const
+              }
+            })()
+
             return {
               _tag: "ProductUnavailable" as const,
               productCode: error.product_code,
-              reason: error.reason === "not_available_in_country" ?
-                "country_unavailable" as const :
-                error.reason === "pricing_changed" ?
-                "pricing_mismatch" as const :
-                error.reason as any
-            }
-          }
-
-          if (error instanceof DuplicateAdminAction) {
-            return {
-              _tag: "DuplicateSettlement" as const,
-              externalRef: error.external_ref ?? request.settlementData.externalRef,
-              existingLotId: typeof (error as any).existing_lot_id === "string" ?
-                (error as any).existing_lot_id :
-                "",
-              existingReceiptId: typeof (error as any).existing_receipt_id === "string" ?
-                (error as any).existing_receipt_id :
-                ""
+              reason: rpcReason
             }
           }
 
