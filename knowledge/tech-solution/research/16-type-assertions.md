@@ -48,26 +48,49 @@ export const CompletedOperation = Operation.pipe(
 
 **CRITICAL REQUIREMENT**: **NEVER use `as any` in Effect Schema filters**. Effect Schema properly preserves type information for both required and optional fields. Any perceived need for type assertions indicates a misunderstanding of Effect Schema's type system.
 
-### 2. JSON/JSONB Field Access
+### 2. ❌ ANTI-PATTERN: Schema.Unknown for Domain-Defined Structures
 
-**Problem**: Accessing properties within schema-defined JSON fields that are typed as `Record<string, unknown>` or similar broad types.
+**Status**: **RESOLVED** - All instances have been fixed with proper domain schemas.
 
-**Files affected**:
-- `apps/server/src/domain/products/Product.ts:63`
-- `apps/server/src/domain/receipts/Receipt.ts:31,39,44,49,54,80,81,110`
+**Problem**: Using `Schema.Unknown` for JSONB fields that have well-defined domain requirements instead of creating proper typed schemas.
 
-**Root cause**: JSONB fields in PostgreSQL are stored as flexible records, but business logic requires accessing specific known properties.
+**Files previously affected** (now fixed):
+- ~~`apps/server/src/domain/products/Product.ts:63`~~ ✅ Fixed
+- ~~`apps/server/src/domain/receipts/Receipt.ts:31,39,44,49,54,80,81,110`~~ ✅ Fixed
 
-**Example**:
+**Root cause**: **Incorrect assumption** - Domain specifications provide complete and specific schemas for all JSONB fields. Using `Schema.Unknown` bypassed proper typing when exact requirements were documented.
+
+**WRONG Example** (with Schema.Unknown):
 ```typescript
-findPriceForCountry(country: string): PriceRow | undefined {
-  if (Option.isNone(this.price_rows)) return undefined
-  const priceRows = (this.price_rows as any).value as Array<PriceRow>
-  // ...
-}
+// ❌ NEVER DO THIS - Schema.Unknown when domain requirements exist
+purchase_snapshot: Schema.Record({
+  key: Schema.String,
+  value: Schema.Unknown
+})
 ```
 
-**Pattern**: `price_rows` is defined as `Schema.OptionFromNullOr(Schema.Array(PriceRow))`, but accessing `.value` requires type assertion because TypeScript sees it as an Option type.
+**CORRECT Example** (with proper domain schemas):
+```typescript
+// ✅ CORRECT - Use domain-specified schemas
+export const PurchaseSnapshot = Schema.Struct({
+  product_code: Schema.String,
+  product_title: Schema.String,
+  external_ref: Schema.String,
+  country: Schema.String,
+  currency: Schema.String,
+  amount: Schema.Number,
+  tax_breakdown: Schema.optional(Schema.Struct({
+    type: Schema.Literal("vat", "turnover", "none"),
+    rate: Schema.optional(Schema.Number),
+    amount: Schema.optional(Schema.Number),
+    note: Schema.optional(Schema.String)
+  }))
+})
+
+purchase_snapshot: PurchaseSnapshot
+```
+
+**CRITICAL REQUIREMENT**: **NEVER use `Schema.Unknown` when domain requirements exist**. Always implement the exact schemas specified in domain documentation rather than using flexible record types. This ensures type safety, proper validation, and API consistency.
 
 ### 3. Test Framework Integration
 
@@ -91,6 +114,8 @@ export const expectRight = <A, E>(result: Either.Either<A, E>): A => {
 **Pattern**: Either types have internal `_tag` and `right`/`left` properties that TypeScript doesn't expose in the public interface.
 
 ### 4. SQL Template System Workarounds
+
+**Status**: ✅ **ACCEPTABLE** - Necessary for test infrastructure during active development.
 
 **Problem**: Working around Effect SQL's template system limitations in test environments.
 
@@ -116,6 +141,8 @@ const attachTemplate = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
 ```
 
 **Pattern**: Test mocks need to add template metadata to Effect objects to simulate SQL fragment behavior.
+
+**Assessment**: **LEGITIMATE USE** - These type assertions are acceptable in test infrastructure. They enable sophisticated SQL mocking capabilities that would be difficult to achieve with strict typing. During active development, extensive mocking in tests naturally requires type assertions to work around framework limitations. These are confined to test boundaries and don't affect production code quality.
 
 ### 5. Error Handling and Type Narrowing
 

@@ -40,39 +40,20 @@ export class MerchantConfig extends Schema.Class<MerchantConfig>("MerchantConfig
   }
 
   // Generate snapshot for receipts
-  toReceiptSnapshot(): MerchantConfigSnapshot {
-    const snapshot: Record<string, unknown> = {
+  toReceiptSnapshot() {
+    return {
       merchant_id: this.merchantId,
       legal_name: this.legalName,
       registered_address: this.registeredAddress,
       country: this.country,
       tax_regime: this.taxRegime,
-      receipt_series_prefix: this.receiptSeriesPrefix
+      vat_rate: this.vatRate,
+      tax_status_note: this.taxStatusNote,
+      receipt_series_prefix: this.receiptSeriesPrefix,
+      operation_timeout_minutes: this.operationTimeoutMinutes,
+      retention_years: this.retentionYears
     }
-
-    if (this.vatRate !== undefined) {
-      snapshot.vat_rate = this.vatRate
-    }
-
-    if (this.taxStatusNote !== undefined) {
-      snapshot.tax_status_note = this.taxStatusNote
-    }
-
-    return snapshot as MerchantConfigSnapshot
   }
-}
-
-// Snapshot type for receipt storage (matches existing receipt structure)
-export interface MerchantConfigSnapshot {
-  readonly [key: string]: unknown
-  readonly merchant_id: string
-  readonly legal_name: string
-  readonly registered_address: string
-  readonly country: string
-  readonly tax_regime: "vat" | "turnover" | "none"
-  readonly vat_rate?: number
-  readonly tax_status_note?: string
-  readonly receipt_series_prefix: string
 }
 
 export namespace MerchantConfig {

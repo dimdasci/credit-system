@@ -222,7 +222,12 @@ export const TestSettlementData = {
       merchant_config_snapshot: {
         merchant_id: "9327",
         legal_name: "Test GmbH",
-        receipt_series_prefix: "R-DE"
+        registered_address: "123 Test Street, Test City",
+        country: "DE",
+        tax_regime: "vat",
+        receipt_series_prefix: "R-DE",
+        operation_timeout_minutes: 30,
+        retention_years: 7
       }
     } as Receipt.Encoded
   ],

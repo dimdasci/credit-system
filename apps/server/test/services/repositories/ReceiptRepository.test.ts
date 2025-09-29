@@ -18,14 +18,21 @@ describe("ReceiptRepository", () => {
     issued_at: "2025-03-15T10:00:00Z",
     purchase_snapshot: {
       product_code: "TEST_PRODUCT",
-      amount: 29.99,
+      product_title: "Test Product Title",
+      external_ref: "stripe_payment_123",
+      country: "US",
       currency: "USD",
-      external_ref: "stripe_payment_123"
+      amount: 29.99
     },
     merchant_config_snapshot: {
+      merchant_id: "TEST_MERCHANT",
       legal_name: "Test Merchant Ltd",
       registered_address: "123 Test Street",
-      tax_regime: "VAT"
+      country: "US",
+      tax_regime: "vat",
+      receipt_series_prefix: "R-AM",
+      operation_timeout_minutes: 30,
+      retention_years: 7
     }
   })
 
